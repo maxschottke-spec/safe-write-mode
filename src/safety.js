@@ -31,13 +31,16 @@ function refuse(baseEntry, code, message) {
   throw new SafetyError(message, code);
 }
 
+const ALLOWED_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+
 async function safeWrite({ integration, method, path: target, body, opts = {}, execute }) {
   const { dryRun = false, confirmed = false, destructive = false, reason = null } = opts;
+  const normalizedMethod = String(method ?? '').toUpperCase();
   const mode = getMode();
 
   const baseEntry = {
     integration,
-    method,
+    method: normalizedMethod,
     path: target,
     requestHash: hashRequest(body),
     dryRun,
@@ -45,21 +48,28 @@ async function safeWrite({ integration, method, path: target, body, opts = {}, e
     reason,
   };
 
+  if (!ALLOWED_METHODS.has(normalizedMethod)) {
+    refuse(
+      baseEntry,
+      'INVALID_METHOD',
+      `Refused: method must be one of POST/PUT/PATCH/DELETE (got '${method}').`,
+    );
+  }
   if (mode === 'read-only') {
     refuse(
       baseEntry,
       'READ_ONLY_MODE',
-      `Refused: write blocked because MODE=read-only (${integration} ${method} ${target}).`,
+      `Refused: write blocked because MODE=read-only (${integration} ${normalizedMethod} ${target}).`,
     );
   }
   if (!confirmed) {
     refuse(
       baseEntry,
       'CONFIRMATION_REQUIRED',
-      `Refused: write requires { confirmed: true } (${integration} ${method} ${target}).`,
+      `Refused: write requires { confirmed: true } (${integration} ${normalizedMethod} ${target}).`,
     );
   }
-  if (method === 'DELETE' && !destructive) {
+  if (normalizedMethod === 'DELETE' && !destructive) {
     refuse(
       baseEntry,
       'DESTRUCTIVE_NOT_ACKED',

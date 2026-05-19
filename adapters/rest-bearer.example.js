@@ -3,7 +3,7 @@
 // Adapter skeleton: REST API with static bearer token.
 // Replace BASE_URL, env var names, and rate limit per your vendor.
 
-const { request, __INTERNAL_WRITE__ } = require('../src');
+const { request, getMode, SafetyError, __INTERNAL_WRITE__ } = require('../src');
 
 const BASE_URL = 'https://api.example.com/v1';
 const MIN_INTERVAL_MS = 250;
@@ -39,6 +39,12 @@ function createRestBearerClient({ label, token, baseUrl = BASE_URL }) {
       return call('GET', path);
     },
     async [__INTERNAL_WRITE__](method, path, body) {
+      if (getMode() === 'read-only') {
+        throw new SafetyError(
+          `Refused: write blocked because MODE=read-only (adapter-level recheck, ${method} ${path}).`,
+          'READ_ONLY_MODE',
+        );
+      }
       return call(method, path, body);
     },
   };

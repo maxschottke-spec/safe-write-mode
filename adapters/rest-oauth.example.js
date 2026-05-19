@@ -4,7 +4,7 @@
 // Refreshes the access token ~30s before expiry. Replace token endpoint,
 // client_id/secret env names, and base URL per your vendor.
 
-const { request, __INTERNAL_WRITE__ } = require('../src');
+const { request, getMode, SafetyError, __INTERNAL_WRITE__ } = require('../src');
 
 const BASE_URL = 'https://api.example.com/v2';
 const TOKEN_URL = 'https://auth.example.com/oauth/token';
@@ -53,6 +53,12 @@ function createOauthClient({ label, clientId, clientSecret, refreshToken, baseUr
       return call('GET', path);
     },
     async [__INTERNAL_WRITE__](method, path, body) {
+      if (getMode() === 'read-only') {
+        throw new SafetyError(
+          `Refused: write blocked because MODE=read-only (adapter-level recheck, ${method} ${path}).`,
+          'READ_ONLY_MODE',
+        );
+      }
       return call(method, path, body);
     },
   };
