@@ -13,6 +13,9 @@ const REFRESH_LEAD_MS = 30_000;
 function createOauthClient({ label, clientId, clientSecret, refreshToken, baseUrl = BASE_URL }) {
   let accessToken = null;
   let expiresAt = 0;
+  // N2 (audit): cache in-flight refresh promise so parallel callers share a
+  // single refresh request instead of stampeding the auth server.
+  let refreshPromise = null;
 
   async function refreshAccessToken() {
     const res = await request({
@@ -26,14 +29,31 @@ function createOauthClient({ label, clientId, clientSecret, refreshToken, baseUr
         refresh_token: refreshToken,
       }).toString(),
     });
-    accessToken = res.body.access_token;
-    expiresAt = Date.now() + (res.body.expires_in * 1000) - REFRESH_LEAD_MS;
+    // N2: validate token endpoint response BEFORE mutating state. A token
+    // server that returns malformed/error JSON without expires_in would
+    // otherwise set expiresAt=NaN and trap the client in 'Bearer undefined'
+    // forever (Date.now() >= NaN is false → refresh never runs again).
+    const newToken = res?.body?.access_token;
+    const newExpiresIn = Number(res?.body?.expires_in);
+    if (typeof newToken !== 'string' || newToken.length === 0) {
+      throw new Error('OAuth refresh failed: missing access_token in response');
+    }
+    if (!Number.isFinite(newExpiresIn) || newExpiresIn <= 0) {
+      throw new Error('OAuth refresh failed: missing or invalid expires_in in response');
+    }
+    accessToken = newToken;
+    expiresAt = Date.now() + newExpiresIn * 1000 - REFRESH_LEAD_MS;
   }
 
   async function ensureToken() {
-    if (!accessToken || Date.now() >= expiresAt) {
-      await refreshAccessToken();
+    if (accessToken && Date.now() < expiresAt) return;
+    // N2: share the in-flight promise across concurrent callers.
+    if (!refreshPromise) {
+      refreshPromise = refreshAccessToken().finally(() => {
+        refreshPromise = null;
+      });
     }
+    await refreshPromise;
   }
 
   async function call(method, path, body) {

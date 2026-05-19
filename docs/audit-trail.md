@@ -26,7 +26,8 @@ Other possible `outcome` values:
 
 | Outcome | When it appears |
 |---|---|
-| `refused` | The write was blocked by one of the three keys. Includes `reasonCode`. |
+| `refused` | The write was blocked by one of the gates. Includes `reasonCode`. |
+| `pending` | Written BEFORE `execute()` runs. Pairs with a later `ok`/`error` entry via `auditId`. Lets you reconcile "request committed at remote but final log write failed" cases. |
 | `dry-run` | Dry-run was requested. `execute()` was not called. |
 | `ok` | Write executed successfully. Includes `status` and `durationMs`. |
 | `error` | `execute()` threw. Includes `error` (message), `status` (if HTTP), and `durationMs`. |
@@ -35,12 +36,15 @@ For `refused` entries, the `reasonCode` field tells you which gate fired:
 
 - `READ_ONLY_MODE`
 - `CONFIRMATION_REQUIRED`
-- `DESTRUCTIVE_NOT_ACKED`
+- `DESTRUCTIVE_NOT_ACKED` (DELETE without ack, or any method on a destructive-shaped path)
 - `INVALID_MODE`
+- `INVALID_METHOD` (non POST/PUT/PATCH/DELETE)
+- `REASON_REQUIRED` (when `opts.requireReason` or `SAFE_WRITE_REQUIRE_REASON=1`)
+- `AUDIT_UNAVAILABLE` (pre-execute fail-fast when log dir is not writable)
 
 ## Where it goes
 
-By default: `./logs/writes-YYYY-MM-DD.ndjson`, rotated daily.
+By default: `./logs/writes-YYYY-MM-DD.ndjson`. Files are date-named, not actively rotated — old files are not deleted by the library. Ship to long-term storage and prune manually, or wrap `logWrite` with retention logic.
 
 Override with `WRITE_LOG_DIR`:
 
@@ -74,22 +78,35 @@ This makes the log safe to share with team members, store in version control (do
 
 - Zero dependencies. The standard library does it.
 - Streamable. Tools like `jq`, `awk`, `grep` work out of the box.
-- Append-only. Tampering breaks readability without sophisticated tooling.
 - Forward-compatible. If you later want to ship to a database, replay the NDJSON.
+
+**Note on tamper-resistance.** The on-disk file is plain text — anyone with
+write access to the directory can edit or delete lines cleanly. The "append-only"
+property is a convention enforced by the library, not by the filesystem. If you
+need actual tamper-evidence:
+
+- Stream entries off-machine to append-only storage (S3 with object lock, a SIEM,
+  a hash-chained ledger).
+- Or wrap `logWrite` to add HMAC signatures per line with a key the application
+  process cannot read after startup.
+- Or set `chattr +a` on the file (Linux ext-family filesystems) to enforce
+  append-only at the kernel level — but the library will not do this for you.
 
 If you want database-grade audit (queryable, indexed, with retention policies), wrap `logWrite` or stream the NDJSON into your warehouse.
 
 ## Verifying audit integrity
 
-Given a stored audit entry and the original request body, you can verify that the body matches:
+Given a stored audit entry and the original request body, you can verify that the body matches by re-serializing with the same canonical algorithm:
 
 ```js
+const { canonicalStringify } = require('safe-write-mode/src/safety');
 const crypto = require('node:crypto');
+
 function verify(body, hashFromAudit) {
-  const str = typeof body === 'string' ? body : JSON.stringify(body);
+  const str = typeof body === 'string' ? body : canonicalStringify(body);
   const h = 'sha256:' + crypto.createHash('sha256').update(str).digest('hex');
   return h === hashFromAudit;
 }
 ```
 
-Note: this only works if the body is **byte-identical** — same key order, same whitespace, same types. JSON serialization is not deterministic across runtimes, so this is best-effort. Use it to confirm "this looks plausible," not "this is mathematically the exact request."
+`canonicalStringify` sorts object keys recursively before serializing, so semantically identical bodies (same data, different key order) produce the same hash. This means `verify` confirms "yes, an equivalent body was hashed" rather than "this exact byte sequence was sent." For an attacker-grade integrity proof you still want HMAC or a hash chain — see the tamper-resistance note above.

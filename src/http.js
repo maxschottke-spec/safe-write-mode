@@ -5,17 +5,37 @@ class HttpError extends Error {
     super(message);
     this.name = 'HttpError';
     this.status = status;
-    this.body = body;
-    this.headers = headers;
+    // N8 (audit): keep body/headers off the error envelope when serialized to
+    // audit log. Stored as non-enumerable so they remain accessible to direct
+    // catch-handlers but don't leak through JSON.stringify / spread.
+    Object.defineProperty(this, 'body', { value: body, enumerable: false });
+    Object.defineProperty(this, 'headers', { value: headers, enumerable: false });
   }
 }
 
 const RETRYABLE_STATUSES = new Set([408, 425, 429, 500, 502, 503, 504]);
+const IDEMPOTENT_METHODS = new Set(['GET', 'HEAD', 'OPTIONS', 'PUT', 'DELETE']);
+const RETRY_AFTER_MIN_MS = 250;
 
-function isRetryable(err) {
+function isMethodRetryable(method) {
+  return IDEMPOTENT_METHODS.has(String(method ?? 'GET').toUpperCase());
+}
+
+function isRetryable(err, method) {
   if (err.name === 'AbortError') return false;
-  if (err.name === 'HttpError') return RETRYABLE_STATUSES.has(err.status);
-  if (err.name === 'TypeError') return true;
+  if (err.name === 'HttpError') {
+    if (!RETRYABLE_STATUSES.has(err.status)) return false;
+    // M1: 429 is server-stated "try again" → always safe to retry.
+    // 5xx without idempotency cannot distinguish "request did not arrive" from
+    // "request committed then crashed" → only retry idempotent methods.
+    if (err.status === 429) return true;
+    return isMethodRetryable(method);
+  }
+  if (err.name === 'TypeError') {
+    // M1: network error on POST/PATCH → can't tell if server committed.
+    // Only retry idempotent methods.
+    return isMethodRetryable(method);
+  }
   return false;
 }
 
@@ -23,12 +43,16 @@ function parseRetryAfter(headers) {
   if (!headers || typeof headers.get !== 'function') return null;
   const ra = headers.get('retry-after');
   if (!ra) return null;
+  // N3: bound header length to defeat absurd inputs.
+  if (ra.length > 32) return null;
   if (/^\d+$/.test(ra)) {
-    return Math.min(60_000, parseInt(ra, 10) * 1000);
+    // N3: enforce minimum delay so a server-stated Retry-After: 0 cannot
+    // produce a zero-delay retry storm.
+    return Math.min(60_000, Math.max(RETRY_AFTER_MIN_MS, parseInt(ra, 10) * 1000));
   }
   const date = Date.parse(ra);
   if (Number.isNaN(date)) return null;
-  return Math.max(0, Math.min(60_000, date - Date.now()));
+  return Math.max(RETRY_AFTER_MIN_MS, Math.min(60_000, date - Date.now()));
 }
 
 function sleep(ms) {
@@ -88,13 +112,14 @@ async function doRequest({ method = 'GET', url, headers = {}, body, timeoutMs = 
 
 async function request(opts) {
   const policy = opts.retry || { retries: 0, backoffMs: 250, maxBackoffMs: 4000 };
+  const method = opts.method || 'GET';
   let lastErr;
   for (let attempt = 0; attempt <= policy.retries; attempt++) {
     try {
       return await doRequest(opts);
     } catch (err) {
       lastErr = err;
-      if (!isRetryable(err) || attempt === policy.retries) throw err;
+      if (!isRetryable(err, method) || attempt === policy.retries) throw err;
       const after = parseRetryAfter(err.headers);
       const delay = after != null ? after : computeBackoff(attempt, policy);
       await sleep(delay);

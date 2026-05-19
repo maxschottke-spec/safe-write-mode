@@ -5,6 +5,14 @@ const { safeWrite } = require('./safety');
 const __INTERNAL_WRITE__ = Symbol('safeWrite.internalOp');
 
 function createIntegration({ name, client, readOnly = false }) {
+  // N5 (audit): strict boolean check. A truthy non-boolean (string, number,
+  // object) silently routed callers through different branches in v0.1 —
+  // make the policy explicit.
+  if (typeof readOnly !== 'boolean') {
+    throw new TypeError(
+      `createIntegration({ readOnly }) must be a strict boolean (got ${typeof readOnly}: ${String(readOnly)}).`,
+    );
+  }
   const surface = {
     name,
     readOnly,
@@ -13,7 +21,7 @@ function createIntegration({ name, client, readOnly = false }) {
     },
   };
 
-  if (readOnly) return Object.freeze(surface);
+  if (readOnly === true) return Object.freeze(surface);
 
   surface.write = Object.freeze({
     post: (path, body, opts = {}) =>
