@@ -1,0 +1,45 @@
+{
+  "name": "safe-write-mode",
+  "version": "0.1.0",
+  "description": "Read-only by default. Three-key write protection. Auditable by design. Pattern for letting agents and scripts safely interact with live external systems.",
+  "main": "src/index.js",
+  "files": [
+    "src/",
+    "SKILL.md",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "node --test 'test/*.test.js'",
+    "example:basic": "node examples/basic-read-only.js",
+    "example:write": "node examples/three-key-write.js",
+    "example:dry-run": "node examples/dry-run-flow.js",
+    "example:multi-tenant": "node examples/multi-tenant.js"
+  },
+  "keywords": [
+    "safety",
+    "guardrail",
+    "agent",
+    "ai",
+    "audit",
+    "read-only",
+    "write-protection",
+    "live-system",
+    "operator-tools",
+    "claude",
+    "llm"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "bugs": {
+    "url": ""
+  },
+  "homepage": ""
+}
