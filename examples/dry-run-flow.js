@@ -1,20 +1,21 @@
 'use strict';
 
 // Rehearse a batch of writes with dryRun: true, review the audit log,
-// then run the real batch. Demonstrates the "rehearse → review → execute" loop.
+// then run the real batch.
 //
-// Run with: MODE=read-write WRITE_LOG_DIR=./logs node examples/dry-run-flow.js
+// Run with: SAFE_WRITE_MODE=read-write WRITE_LOG_DIR=./logs node examples/dry-run-flow.js
 
 const fs = require('node:fs');
 const path = require('node:path');
-const { createIntegration, __INTERNAL_WRITE__ } = require('../src');
+const { createIntegration, defineAdapter } = require('../src');
 
-const fakeClient = {
+const fakeClient = defineAdapter({
+  label: 'fake-cms',
   async get() { return { status: 200, body: {} }; },
-  async [__INTERNAL_WRITE__](method, path, body) {
-    return { status: 200, body: { method, path, body } };
+  async write(method, p, body) {
+    return { status: 200, body: { method, p, body } };
   },
-};
+});
 
 async function main() {
   const cms = createIntegration({ name: 'fake-cms', client: fakeClient });

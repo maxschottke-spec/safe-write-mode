@@ -6,30 +6,38 @@ const fs = require('node:fs');
 const path = require('node:path');
 const os = require('node:os');
 
-// Isolate the audit log dir so tests don't pollute the repo.
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'swm-test-'));
 process.env.WRITE_LOG_DIR = TMP;
 process.env.LOG_LEVEL = 'error';
 
-const { SafetyError, safeWrite, getMode } = require('../src/safety');
+const { SafetyError, safeWrite, getMode, _unlockModeForTests } = require('../src/safety');
+
+function cleanModeEnv() {
+  _unlockModeForTests();
+  delete process.env.SAFE_WRITE_MODE;
+  delete process.env.MODE;
+}
 
 test('getMode defaults to read-only', () => {
-  delete process.env.MODE;
+  cleanModeEnv();
   assert.equal(getMode(), 'read-only');
 });
 
 test('getMode accepts read-write', () => {
-  process.env.MODE = 'read-write';
+  cleanModeEnv();
+  process.env.SAFE_WRITE_MODE = 'read-write';
   assert.equal(getMode(), 'read-write');
 });
 
 test('getMode rejects invalid values', () => {
-  process.env.MODE = 'write-everything';
+  cleanModeEnv();
+  process.env.SAFE_WRITE_MODE = 'write-everything';
   assert.throws(() => getMode(), { code: 'INVALID_MODE' });
 });
 
 test('safeWrite refuses in read-only mode', async () => {
-  process.env.MODE = 'read-only';
+  cleanModeEnv();
+  process.env.SAFE_WRITE_MODE = 'read-only';
   await assert.rejects(
     () => safeWrite({
       integration: 'test',
@@ -44,7 +52,8 @@ test('safeWrite refuses in read-only mode', async () => {
 });
 
 test('safeWrite refuses without { confirmed: true }', async () => {
-  process.env.MODE = 'read-write';
+  cleanModeEnv();
+  process.env.SAFE_WRITE_MODE = 'read-write';
   await assert.rejects(
     () => safeWrite({
       integration: 'test',
@@ -59,7 +68,8 @@ test('safeWrite refuses without { confirmed: true }', async () => {
 });
 
 test('safeWrite refuses DELETE without { destructive: true }', async () => {
-  process.env.MODE = 'read-write';
+  cleanModeEnv();
+  process.env.SAFE_WRITE_MODE = 'read-write';
   await assert.rejects(
     () => safeWrite({
       integration: 'test',
@@ -74,7 +84,8 @@ test('safeWrite refuses DELETE without { destructive: true }', async () => {
 });
 
 test('safeWrite executes when all three keys are present', async () => {
-  process.env.MODE = 'read-write';
+  cleanModeEnv();
+  process.env.SAFE_WRITE_MODE = 'read-write';
   let called = false;
   const result = await safeWrite({
     integration: 'test',
@@ -89,7 +100,8 @@ test('safeWrite executes when all three keys are present', async () => {
 });
 
 test('safeWrite respects dryRun and does not call execute', async () => {
-  process.env.MODE = 'read-write';
+  cleanModeEnv();
+  process.env.SAFE_WRITE_MODE = 'read-write';
   let called = false;
   const result = await safeWrite({
     integration: 'test',
@@ -105,7 +117,8 @@ test('safeWrite respects dryRun and does not call execute', async () => {
 });
 
 test('safeWrite logs every attempt to the audit trail', async () => {
-  process.env.MODE = 'read-write';
+  cleanModeEnv();
+  process.env.SAFE_WRITE_MODE = 'read-write';
   await safeWrite({
     integration: 'audit-test',
     method: 'PUT',
@@ -120,6 +133,5 @@ test('safeWrite logs every attempt to the audit trail', async () => {
   const content = fs.readFileSync(logFile, 'utf8');
   assert.ok(content.includes('"integration":"audit-test"'));
   assert.ok(content.includes('"reason":"audit log test"'));
-  // requestHash should be present and SHA-256-shaped.
   assert.match(content, /"requestHash":"sha256:[0-9a-f]{64}"/);
 });

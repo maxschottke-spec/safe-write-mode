@@ -1,22 +1,23 @@
 'use strict';
 
 // Full three-key ceremony.
-// Run with: MODE=read-write node examples/three-key-write.js
+// Run with: SAFE_WRITE_MODE=read-write node examples/three-key-write.js
 //
-// Try omitting MODE or { confirmed: true } and watch SafetyError fire.
+// Try omitting SAFE_WRITE_MODE or { confirmed: true } and watch SafetyError fire.
 
-const { createIntegration, SafetyError, __INTERNAL_WRITE__ } = require('../src');
+const { createIntegration, defineAdapter, SafetyError } = require('../src');
 
-// A fake client that supports the internal write contract.
-const fakeClient = {
+// A fake client wired through defineAdapter so createIntegration accepts it.
+// In real code, replace `write` with your vendor-specific HTTP call.
+const fakeClient = defineAdapter({
+  label: 'fake-erp',
   async get(path) {
     return { status: 200, body: { path } };
   },
-  async [__INTERNAL_WRITE__](method, path, body) {
-    // Real implementations would call fetch/axios/etc. here.
+  async write(method, path, body) {
     return { status: 200, body: { method, path, written: body } };
   },
-};
+});
 
 async function main() {
   const erp = createIntegration({ name: 'fake-erp', client: fakeClient });
@@ -39,13 +40,13 @@ async function main() {
   } catch (err) {
     if (err instanceof SafetyError) {
       console.log('Refused by SafetyError:', err.code, '-', err.message);
-      console.log('  Hint: set MODE=read-write to allow writes.');
+      console.log('  Hint: set SAFE_WRITE_MODE=read-write to allow writes.');
     } else {
       throw err;
     }
   }
 
-  // Step 3: a DELETE that omits destructive — will be refused even with MODE=read-write.
+  // Step 3: a DELETE that omits destructive — will be refused even in read-write.
   try {
     await erp.write.delete('/stock/SKU-42', { confirmed: true, reason: 'cleanup' });
   } catch (err) {

@@ -1,7 +1,7 @@
 'use strict';
 
-// Regression coverage for external audit findings — see audit_swm_v01_external.
-// Each test pins the new behavior so accidental rollback breaks CI.
+// Regression coverage for external audit findings (round 1) — see
+// audit_swm_v01_external. Round-2 fixes live in audit-fixes-r2.test.js.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -19,22 +19,22 @@ const {
   getMode,
   canonicalStringify,
   isDestructivePath,
+  _unlockModeForTests,
 } = require('../src/safety');
-const { createIntegration } = require('../src/integrationFactory');
+const { createIntegration, defineAdapter } = require('../src/integrationFactory');
 
 function fakeClient() {
-  return {
+  return defineAdapter({
+    label: 'fake',
     async get() { return { status: 200 }; },
-    // eslint-disable-next-line no-undef
-    async [require('../src/integrationFactory').__INTERNAL_WRITE__]() {
-      return { status: 200 };
-    },
-  };
+    async write() { return { status: 200 }; },
+  });
 }
 
 // ─── M3: SAFE_WRITE_MODE namespace ─────────────────────────────────────────
 
 test('M3: SAFE_WRITE_MODE overrides legacy MODE when set', () => {
+  _unlockModeForTests();
   delete process.env.MODE;
   process.env.SAFE_WRITE_MODE = 'read-write';
   assert.equal(getMode(), 'read-write');
@@ -42,6 +42,7 @@ test('M3: SAFE_WRITE_MODE overrides legacy MODE when set', () => {
 });
 
 test('M3: legacy MODE still works as fallback', () => {
+  _unlockModeForTests();
   delete process.env.SAFE_WRITE_MODE;
   process.env.MODE = 'read-write';
   assert.equal(getMode(), 'read-write');
@@ -50,6 +51,7 @@ test('M3: legacy MODE still works as fallback', () => {
 // ─── N4: case-insensitive method + allowlist ───────────────────────────────
 
 test('N4: lowercase delete is treated as DELETE (destructive check fires)', async () => {
+  _unlockModeForTests();
   delete process.env.SAFE_WRITE_MODE;
   process.env.MODE = 'read-write';
   await assert.rejects(
@@ -134,7 +136,7 @@ test('M2: SAFE_WRITE_REQUIRE_REASON=1 enforces reason globally', async () => {
       method: 'POST',
       path: '/x',
       body: {},
-      opts: { confirmed: true, reason: '   ' }, // whitespace-only counts as missing
+      opts: { confirmed: true, reason: '   ' },
       execute: async () => ({ status: 200 }),
     }),
     (err) => err instanceof SafetyError && err.code === 'REASON_REQUIRED',
@@ -157,7 +159,6 @@ test('N5: createIntegration rejects non-boolean readOnly', () => {
   assert.throws(() => createIntegration({ name: 'x', client: fake, readOnly: 'true' }), TypeError);
   assert.throws(() => createIntegration({ name: 'x', client: fake, readOnly: 1 }), TypeError);
   assert.throws(() => createIntegration({ name: 'x', client: fake, readOnly: null }), TypeError);
-  // boolean values accepted
   assert.ok(createIntegration({ name: 'x', client: fake, readOnly: true }));
   assert.ok(createIntegration({ name: 'x', client: fake, readOnly: false }));
 });
@@ -173,9 +174,6 @@ test('N6: requiredJsonBase64 rejects malformed base64', () => {
 
 test('N6: requiredJsonBase64 rejects __proto__ pollution', () => {
   const { requiredJsonBase64 } = require('../src/env');
-  // Use literal JSON string — JS-literal {__proto__: X} sets the prototype,
-  // not a key, so we have to build the JSON by hand to embed the dangerous
-  // key string verbatim.
   const dangerousJson = '{"__proto__":{"polluted":true}}';
   process.env.SWM_TEST_PROTO = Buffer.from(dangerousJson).toString('base64');
   assert.throws(() => requiredJsonBase64('SWM_TEST_PROTO'), /dangerous key/);
@@ -191,9 +189,7 @@ test('N8: HttpError body/headers do not leak via JSON.stringify or spread', () =
     body: { secret: 'leaky' },
     headers: { 'set-cookie': 'session=abc' },
   });
-  // direct access still works (intentional for catch handlers)
   assert.equal(err.body.secret, 'leaky');
-  // but enumeration and JSON do not surface them
   const enumerated = Object.keys(err);
   assert.equal(enumerated.includes('body'), false);
   assert.equal(enumerated.includes('headers'), false);
@@ -218,7 +214,6 @@ test('H4: audit log records pending entry before execute(), with auditId', async
   const logFile = path.join(TMP, `writes-${today}.ndjson`);
   const content = fs.readFileSync(logFile, 'utf8');
   const h4Lines = content.split('\n').filter((l) => l.includes('"integration":"h4-test"'));
-  // Expect at least one pending + one ok entry sharing the same auditId.
   const pending = h4Lines.find((l) => l.includes('"outcome":"pending"'));
   const ok = h4Lines.find((l) => l.includes('"outcome":"ok"'));
   assert.ok(pending, 'pending entry should be written before execute');

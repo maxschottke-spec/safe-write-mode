@@ -11,11 +11,22 @@ class SafetyError extends Error {
   }
 }
 
-// M3 (audit): prefer SAFE_WRITE_MODE — namespaced so unrelated tooling that
-// happens to set MODE in the parent process cannot toggle the kill switch.
-// MODE remains as legacy fallback with a one-shot deprecation warning.
+// ─── H1 (audit r2): mode-lock ───────────────────────────────────────────────
+// The kill-switch lives in `process.env`. Any in-process plugin can flip
+// `process.env.SAFE_WRITE_MODE = 'read-write'` and reopen the gate. M3 fixed
+// the M3-specific MODE-collision, but the structural pattern stays open until
+// the host captures the mode at startup and freezes it.
+//
+// Usage:
+//   const { lockMode } = require('safe-write-mode');
+//   process.env.SAFE_WRITE_MODE = 'read-only';
+//   lockMode();   // any subsequent env mutation is ignored.
+//
+// After lockMode() the value is final for the lifetime of the process.
+let _lockedMode = null;
 let _legacyModeWarned = false;
-function getMode() {
+
+function readModeFromEnv() {
   let raw = process.env.SAFE_WRITE_MODE;
   if (raw == null || raw === '') {
     if (process.env.MODE != null && process.env.MODE !== '') {
@@ -37,21 +48,63 @@ function getMode() {
   return m;
 }
 
-// L1 (audit): canonical JSON serialization so semantically identical requests
-// always hash to the same value. Sorts object keys recursively before hashing.
-function canonicalStringify(value) {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value);
-  if (Array.isArray(value)) {
-    return '[' + value.map(canonicalStringify).join(',') + ']';
+function getMode() {
+  if (_lockedMode != null) return _lockedMode;
+  return readModeFromEnv();
+}
+
+function lockMode(explicit) {
+  // Accept an explicit mode argument so the host can pin the value without a
+  // round-trip through process.env (useful in tests and embedded hosts).
+  if (explicit != null) {
+    const m = String(explicit).toLowerCase();
+    if (m !== 'read-only' && m !== 'read-write') {
+      throw new SafetyError(`Invalid lockMode('${explicit}'). Use 'read-only' or 'read-write'.`, 'INVALID_MODE');
+    }
+    _lockedMode = m;
+  } else {
+    _lockedMode = readModeFromEnv();
   }
-  const keys = Object.keys(value).sort();
-  return (
-    '{' +
-    keys
-      .map((k) => JSON.stringify(k) + ':' + canonicalStringify(value[k]))
-      .join(',') +
-    '}'
-  );
+  logger.info('safe-write-mode', { event: 'mode-locked', mode: _lockedMode });
+  return _lockedMode;
+}
+
+function isModeLocked() {
+  return _lockedMode != null;
+}
+
+// Test-only: undo the lock. Not exported through src/index.js — tests reach
+// into ../src/safety directly.
+function _unlockModeForTests() {
+  _lockedMode = null;
+  _legacyModeWarned = false;
+}
+
+// L1 (audit): canonical JSON serialization with depth + cycle defense (D2).
+const MAX_CANONICAL_DEPTH = 32;
+function canonicalStringify(value, depth = 0, seen = new WeakSet()) {
+  if (depth > MAX_CANONICAL_DEPTH) {
+    throw new SafetyError('Refused: body exceeds max canonicalization depth (32).', 'BODY_TOO_DEEP');
+  }
+  if (value === null || typeof value !== 'object') return JSON.stringify(value);
+  if (seen.has(value)) {
+    throw new SafetyError('Refused: body contains a cyclic reference.', 'BODY_CYCLE');
+  }
+  seen.add(value);
+  let out;
+  if (Array.isArray(value)) {
+    out = '[' + value.map((v) => canonicalStringify(v, depth + 1, seen)).join(',') + ']';
+  } else {
+    const keys = Object.keys(value).sort();
+    out =
+      '{' +
+      keys
+        .map((k) => JSON.stringify(k) + ':' + canonicalStringify(value[k], depth + 1, seen))
+        .join(',') +
+      '}';
+  }
+  seen.delete(value);
+  return out;
 }
 
 function hashRequest(body) {
@@ -68,10 +121,6 @@ function refuse(baseEntry, code, message) {
 
 const ALLOWED_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
-// N1 (audit, partial): paths that are semantically destructive regardless of
-// HTTP method. Caller must ack `destructive: true` for any write that hits
-// these patterns. Full N1 fix (destructive-by-default for PUT) requires an
-// API change deferred to v0.2.
 const DESTRUCTIVE_PATH_PATTERNS = [
   /\/reset(\b|\/)/i,
   /\/purge(\b|\/)/i,
@@ -87,6 +136,18 @@ function isDestructivePath(target) {
   return DESTRUCTIVE_PATH_PATTERNS.some((re) => re.test(target));
 }
 
+// CHAIN-1(a) (audit r2): callers can pass `confirmed: true` and
+// `destructive: true` themselves — there is no separate host-channel that
+// distinguishes "a human pressed yes" from "the agent set the flag". A host
+// that needs a real boundary can install a confirmation verifier here.
+let _confirmationVerifier = null;
+function setConfirmationVerifier(fn) {
+  if (fn != null && typeof fn !== 'function') {
+    throw new TypeError('setConfirmationVerifier expects a function or null.');
+  }
+  _confirmationVerifier = fn;
+}
+
 async function safeWrite({ integration, method, path: target, body, opts = {}, execute }) {
   const {
     dryRun = false,
@@ -94,6 +155,7 @@ async function safeWrite({ integration, method, path: target, body, opts = {}, e
     destructive = false,
     reason = null,
     requireReason = false,
+    confirmationToken = null,
   } = opts;
   const normalizedMethod = String(method ?? '').toUpperCase();
   const mode = getMode();
@@ -109,44 +171,51 @@ async function safeWrite({ integration, method, path: target, body, opts = {}, e
   };
 
   if (!ALLOWED_METHODS.has(normalizedMethod)) {
-    refuse(
-      baseEntry,
-      'INVALID_METHOD',
-      `Refused: method must be one of POST/PUT/PATCH/DELETE (got '${method}').`,
-    );
+    refuse(baseEntry, 'INVALID_METHOD',
+      `Refused: method must be one of POST/PUT/PATCH/DELETE (got '${method}').`);
   }
   if (mode === 'read-only') {
-    refuse(
-      baseEntry,
-      'READ_ONLY_MODE',
-      `Refused: write blocked because MODE=read-only (${integration} ${normalizedMethod} ${target}).`,
-    );
+    refuse(baseEntry, 'READ_ONLY_MODE',
+      `Refused: write blocked because SAFE_WRITE_MODE=read-only (${integration} ${normalizedMethod} ${target}).`);
   }
   if (!confirmed) {
-    refuse(
-      baseEntry,
-      'CONFIRMATION_REQUIRED',
-      `Refused: write requires { confirmed: true } (${integration} ${normalizedMethod} ${target}).`,
-    );
+    refuse(baseEntry, 'CONFIRMATION_REQUIRED',
+      `Refused: write requires { confirmed: true } (${integration} ${normalizedMethod} ${target}).`);
   }
   if (normalizedMethod === 'DELETE' && !destructive) {
-    refuse(
-      baseEntry,
-      'DESTRUCTIVE_NOT_ACKED',
-      `Refused: DELETE requires { destructive: true } (${integration} ${target}).`,
-    );
+    refuse(baseEntry, 'DESTRUCTIVE_NOT_ACKED',
+      `Refused: DELETE requires { destructive: true } (${integration} ${target}).`);
   }
-  // N1 partial: destructive paths require ack regardless of method.
   if (isDestructivePath(target) && !destructive) {
-    refuse(
-      baseEntry,
-      'DESTRUCTIVE_NOT_ACKED',
-      `Refused: path '${target}' looks destructive — set { destructive: true } to proceed (${integration} ${normalizedMethod}).`,
-    );
+    refuse(baseEntry, 'DESTRUCTIVE_NOT_ACKED',
+      `Refused: path '${target}' looks destructive — set { destructive: true } to proceed (${integration} ${normalizedMethod}).`);
   }
-  // M2: optional enforcement. Off by default to preserve v0.1 API; opt-in via
-  // opts.requireReason or via env SAFE_WRITE_REQUIRE_REASON=1. When on,
-  // refuses writes without a non-empty reason string.
+  // CHAIN-1(a): if a host-supplied confirmation verifier is installed, route
+  // every write through it. The verifier returns true to allow, false/throw to
+  // refuse. This is the only way to actually escape the "self-attestation"
+  // limitation — the verifier should consult an out-of-process channel.
+  if (_confirmationVerifier) {
+    let verifierOk = false;
+    try {
+      verifierOk = await _confirmationVerifier({
+        integration,
+        method: normalizedMethod,
+        path: target,
+        requestHash: baseEntry.requestHash,
+        destructive,
+        reason,
+        confirmationToken,
+      });
+    } catch (verifierErr) {
+      refuse(baseEntry, 'CONFIRMATION_REJECTED',
+        `Refused: confirmation verifier threw — ${verifierErr.message}`);
+    }
+    if (verifierOk !== true) {
+      refuse(baseEntry, 'CONFIRMATION_REJECTED',
+        `Refused: host confirmation verifier did not approve this write.`);
+    }
+  }
+
   const reasonEnforced =
     requireReason ||
     process.env.SAFE_WRITE_REQUIRE_REASON === '1' ||
@@ -154,11 +223,8 @@ async function safeWrite({ integration, method, path: target, body, opts = {}, e
   if (reasonEnforced) {
     const r = typeof reason === 'string' ? reason.trim() : '';
     if (!r) {
-      refuse(
-        baseEntry,
-        'REASON_REQUIRED',
-        `Refused: write requires non-empty { reason } (${integration} ${normalizedMethod} ${target}).`,
-      );
+      refuse(baseEntry, 'REASON_REQUIRED',
+        `Refused: write requires non-empty { reason } (${integration} ${normalizedMethod} ${target}).`);
     }
   }
 
@@ -168,21 +234,12 @@ async function safeWrite({ integration, method, path: target, body, opts = {}, e
     return { dryRun: true, integration, method, path: target };
   }
 
-  // H4 (audit): write a `pending` audit entry BEFORE execute() so that if
-  // execute() commits the change at the remote but logWrite throws afterwards,
-  // we still have a trail. The pending entry is paired with a later ok/error
-  // record sharing the same auditId.
   const auditId = crypto.randomUUID();
   const start = Date.now();
   try {
     logger.logWrite({ ...baseEntry, auditId, outcome: 'pending' });
   } catch (logErr) {
-    // H4: if we cannot even write the pending entry, fail BEFORE execute so we
-    // never have a committed remote write with no trail at all. Fail-fast.
-    logger.error('write[audit-unavailable]', {
-      ...baseEntry,
-      error: logErr.message,
-    });
+    logger.error('write[audit-unavailable]', { ...baseEntry, error: logErr.message });
     throw new SafetyError(
       `Refused: audit log unavailable (${logErr.message}). Writes blocked until WRITE_LOG_DIR is writable.`,
       'AUDIT_UNAVAILABLE',
@@ -194,22 +251,12 @@ async function safeWrite({ integration, method, path: target, body, opts = {}, e
     const durationMs = Date.now() - start;
     try {
       logger.logWrite({
-        ...baseEntry,
-        auditId,
-        outcome: 'ok',
-        status: result?.status ?? null,
-        durationMs,
+        ...baseEntry, auditId, outcome: 'ok',
+        status: result?.status ?? null, durationMs,
       });
     } catch (logErr) {
-      // H4: write succeeded at the remote but final audit entry failed.
-      // Surface to logs but DO NOT throw — the caller's success path must
-      // reflect the remote outcome, not the audit-store outcome. The pending
-      // entry above means the trail is not lost; an external reconciliation
-      // job can match pending-without-final entries.
       logger.error('write[audit-partial]', {
-        ...baseEntry,
-        auditId,
-        error: logErr.message,
+        ...baseEntry, auditId, error: logErr.message,
         remoteStatus: result?.status ?? null,
       });
     }
@@ -219,19 +266,23 @@ async function safeWrite({ integration, method, path: target, body, opts = {}, e
     const durationMs = Date.now() - start;
     try {
       logger.logWrite({
-        ...baseEntry,
-        auditId,
-        outcome: 'error',
-        durationMs,
-        error: err.message,
-        status: err.status ?? null,
+        ...baseEntry, auditId, outcome: 'error', durationMs,
+        error: err.message, status: err.status ?? null,
       });
-    } catch {
-      // already logged pending; nothing actionable here.
-    }
+    } catch { /* already logged pending */ }
     logger.error('write[error]', { ...baseEntry, auditId, durationMs, error: err.message });
     throw err;
   }
 }
 
-module.exports = { SafetyError, safeWrite, getMode, canonicalStringify, isDestructivePath };
+module.exports = {
+  SafetyError,
+  safeWrite,
+  getMode,
+  lockMode,
+  isModeLocked,
+  setConfirmationVerifier,
+  canonicalStringify,
+  isDestructivePath,
+  _unlockModeForTests,
+};

@@ -6,17 +6,18 @@
 //
 // Run with: node examples/multi-tenant.js
 
-const { createIntegration, __INTERNAL_WRITE__ } = require('../src');
+const { createIntegration, defineAdapter } = require('../src');
 
 function makeFakeClient(tenantId) {
-  return {
-    async get(path) {
-      return { status: 200, body: { tenant: tenantId, path } };
+  return defineAdapter({
+    label: `fake-erp:${tenantId}`,
+    async get(p) {
+      return { status: 200, body: { tenant: tenantId, path: p } };
     },
-    async [__INTERNAL_WRITE__](method, path, body) {
-      return { status: 200, body: { tenant: tenantId, method, path, body } };
+    async write(method, p, body) {
+      return { status: 200, body: { tenant: tenantId, method, path: p, body } };
     },
-  };
+  });
 }
 
 const TENANTS = ['acme', 'globex', 'initech'];
@@ -30,7 +31,6 @@ async function main() {
     })
   );
 
-  // Read the same path from every tenant in parallel.
   const results = await Promise.all(
     integrations.map((i) => i.read.get('/products/SKU-42'))
   );
@@ -38,10 +38,6 @@ async function main() {
   for (const r of results) {
     console.log(`${r.body.tenant}: stock fetched from ${r.body.path}`);
   }
-
-  // Note: each integration has its own `name`, so audit log entries
-  // are clearly labeled per tenant. Useful for compliance, billing,
-  // and forensics.
 }
 
 main().catch((err) => {

@@ -12,24 +12,36 @@ None of these files contain real vendor endpoints, real credentials, or real bus
 | [`rest-oauth.example.js`](rest-oauth.example.js) | REST API with OAuth refresh-token rotation | Google APIs, Microsoft Graph, Amazon SP-API, many enterprise services |
 | [`graphql.example.js`](graphql.example.js) | GraphQL endpoint with mutation guard | Shopify Admin API, GitHub API, modern SaaS GraphQL services |
 
-## Pattern
+## Pattern (v0.2+)
 
-Every adapter exposes the contract `createIntegration` expects:
+Build every adapter via `defineAdapter({ label, get, write })` — the internal
+write symbol is no longer exported, so hand-rolled clients are refused by
+`createIntegration`.
 
 ```js
-// Read-only or read-write:
-const client = {
-  async get(path, opts) { /* ... */ },
-};
+const { defineAdapter } = require('safe-write-mode');
+const { safeJoin } = require('safe-write-mode').http;
 
-// Write-capable additionally:
-client[__INTERNAL_WRITE__] = async (method, path, body, opts) => {
-  // ...
-};
+const client = defineAdapter({
+  label: 'my-vendor',
+  async get(path, opts) {
+    return request({ method: 'GET', url: safeJoin(BASE_URL, path), ... });
+  },
+  // Omit `write` for read-only adapters.
+  async write(method, path, body, opts) {
+    return request({ method, url: safeJoin(BASE_URL, path), body, ... });
+  },
+});
 ```
 
 The integration factory wires `.read.get → client.get` and (if not read-only)
-`.write.{post,patch,put,delete} → safeWrite(... → client[__INTERNAL_WRITE__])`.
+`.write.{post,patch,put,delete} → safeWrite(... → client.write())`.
+
+**Always use `safeJoin(baseUrl, path)` when building URLs** — it refuses
+absolute-URL injection (`/https://evil.tld/x`), protocol-relative paths
+(`//evil.tld/x`), backslashes, scheme-like prefixes, CR/LF (header injection),
+and cross-origin escapes. The strict path validation is what closes the
+"Bearer-leak via path injection" CHAIN-2(b) vector from the external audit.
 
 ## What we deliberately don't ship
 

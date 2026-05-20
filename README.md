@@ -35,17 +35,19 @@ await erp.write.delete('/stock/SKU-42', {
 });
 ```
 
-If `MODE` is not `read-write`, every write is refused before it leaves the process. Every attempt — refused, dry-run, or executed — is logged to an append-only NDJSON audit trail with a SHA-256 hash of the request body. Payload itself is never logged.
+If `SAFE_WRITE_MODE` is not `read-write`, every write is refused before it leaves the process. Every attempt — refused, dry-run, or executed — is logged to an NDJSON audit trail with a SHA-256 hash of the request body. Payload itself is never logged.
 
 ## The three keys
 
 A write is only sent if **all three** are present:
 
-1. **`MODE=read-write`** in the environment. Default is `read-only`.
+1. **`SAFE_WRITE_MODE=read-write`** in the environment (legacy `MODE=read-write` is honored with a deprecation warning). Default is `read-only`.
 2. **`{ confirmed: true }`** as a per-call option. Forces the caller to acknowledge that this specific operation is intentional.
-3. **`{ destructive: true }`** for `DELETE` (and any operation you explicitly classify as irreversible).
+3. **`{ destructive: true }`** for `DELETE` (and any operation matching the destructive-path patterns, e.g. `/reset`, `/purge`, `/wipe`).
 
 Plus: **`{ dryRun: true }`** lets you rehearse the call without sending it. The audit-log records the rehearsal.
+
+> **Threat-model honesty.** The three keys protect against *accidental* writes from a process running with `read-only` defaults. They are **not** a security boundary against a hostile agent in the same Node process: any caller can set `confirmed: true` and `destructive: true` themselves. To get a real boundary, combine this library with read-only API tokens at your vendor and call `lockMode()` + `setConfirmationVerifier()` at startup. See [`SECURITY.md`](SECURITY.md) for the full threat model.
 
 ## Install
 
@@ -53,7 +55,7 @@ Plus: **`{ dryRun: true }`** lets you rehearse the call without sending it. The 
 npm install safe-write-mode
 ```
 
-Node ≥ 18 (uses global `fetch`). Zero runtime dependencies.
+Node ≥ 20.18 (active LTS, uses global `fetch` + `node:dns/promises`). Zero runtime dependencies.
 
 ## Quick start
 
@@ -91,8 +93,11 @@ See [`SKILL.md`](SKILL.md). Drop it into your Claude Code skill directory or inv
 
 ## Status
 
-v0.1.0 — Pattern-stable, API may evolve before v1.0.
-Built for one operator's e-commerce stack; battle-tested against ~17 third-party APIs (Shopify, Lexware, Google Ads/Analytics, Amazon SP-API, etc.). The integrations are not published here. Only the pattern is.
+v0.2.0 — Two rounds of external security audit completed (round-1 + round-2 post-fix verification). Pattern-stable, API may evolve before v1.0.
+
+Built for one operator's e-commerce stack; tested in production against multiple third-party APIs (Shopify, Lexware, Google Ads/Analytics, Amazon SP-API, etc.). The integrations are not published here. Only the pattern is.
+
+**Breaking change v0.1 → v0.2:** The internal-write symbol `__INTERNAL_WRITE__` is no longer exported. Build adapter clients via `defineAdapter({ label, get, write })` and pass them to `createIntegration({ client })`. Hand-rolled clients are refused. See `examples/three-key-write.js` for the new shape.
 
 ## License
 

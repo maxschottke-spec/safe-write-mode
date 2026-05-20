@@ -1,26 +1,46 @@
 'use strict';
 
 // Adapter skeleton: REST API with OAuth2 refresh-token flow.
-// Refreshes the access token ~30s before expiry. Replace token endpoint,
-// client_id/secret env names, and base URL per your vendor.
 
-const { request, getMode, SafetyError, __INTERNAL_WRITE__ } = require('../src');
+const { request, getMode, SafetyError, defineAdapter } = require('../src');
+const { safeJoin } = require('../src/http');
 
 const BASE_URL = 'https://api.example.com/v2';
 const TOKEN_URL = 'https://auth.example.com/oauth/token';
 const REFRESH_LEAD_MS = 30_000;
 
-function createOauthClient({ label, clientId, clientSecret, refreshToken, baseUrl = BASE_URL }) {
+// CHAIN-2 (audit r2): newline/control-char injection into URLSearchParams or
+// Authorization headers — both refuse via this allowlist.
+const SECRET_RE = /^[A-Za-z0-9\-_.~+/=]+$/;
+function validateSecret(name, value) {
+  if (typeof value !== 'string' || value.length < 8 || value.length > 4096) {
+    throw new Error(`${name}: must be a string of length 8..4096`);
+  }
+  if (!SECRET_RE.test(value)) {
+    throw new Error(`${name}: contains characters not allowed in OAuth fields`);
+  }
+}
+
+function createOauthClient({
+  label, clientId, clientSecret, refreshToken,
+  baseUrl = BASE_URL, tokenUrl = TOKEN_URL, expectedTokenType = 'Bearer',
+}) {
+  validateSecret('clientId', clientId);
+  validateSecret('clientSecret', clientSecret);
+  validateSecret('refreshToken', refreshToken);
+
   let accessToken = null;
   let expiresAt = 0;
-  // N2 (audit): cache in-flight refresh promise so parallel callers share a
-  // single refresh request instead of stampeding the auth server.
   let refreshPromise = null;
+  // M3 (audit r2): treat 401 as terminal for static-bearer-style paths; the
+  // OAuth flow has its own refresh, so any 401 after a fresh refresh means the
+  // token is structurally invalid (revoked, wrong scope, wrong audience).
+  // Surface that, don't loop.
 
   async function refreshAccessToken() {
     const res = await request({
       method: 'POST',
-      url: TOKEN_URL,
+      url: tokenUrl,
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         grant_type: 'refresh_token',
@@ -29,17 +49,21 @@ function createOauthClient({ label, clientId, clientSecret, refreshToken, baseUr
         refresh_token: refreshToken,
       }).toString(),
     });
-    // N2: validate token endpoint response BEFORE mutating state. A token
-    // server that returns malformed/error JSON without expires_in would
-    // otherwise set expiresAt=NaN and trap the client in 'Bearer undefined'
-    // forever (Date.now() >= NaN is false → refresh never runs again).
     const newToken = res?.body?.access_token;
     const newExpiresIn = Number(res?.body?.expires_in);
+    const tokenType = res?.body?.token_type;
     if (typeof newToken !== 'string' || newToken.length === 0) {
       throw new Error('OAuth refresh failed: missing access_token in response');
     }
     if (!Number.isFinite(newExpiresIn) || newExpiresIn <= 0) {
       throw new Error('OAuth refresh failed: missing or invalid expires_in in response');
+    }
+    // M1 (audit r2): pin expected token type. Refuses providers that try to
+    // switch from Bearer to MAC/HOBA mid-flow without explicit caller opt-in.
+    if (tokenType && tokenType.toLowerCase() !== expectedTokenType.toLowerCase()) {
+      throw new Error(
+        `OAuth refresh failed: token_type='${tokenType}' does not match expected '${expectedTokenType}'`,
+      );
     }
     accessToken = newToken;
     expiresAt = Date.now() + newExpiresIn * 1000 - REFRESH_LEAD_MS;
@@ -47,7 +71,6 @@ function createOauthClient({ label, clientId, clientSecret, refreshToken, baseUr
 
   async function ensureToken() {
     if (accessToken && Date.now() < expiresAt) return;
-    // N2: share the in-flight promise across concurrent callers.
     if (!refreshPromise) {
       refreshPromise = refreshAccessToken().finally(() => {
         refreshPromise = null;
@@ -58,21 +81,23 @@ function createOauthClient({ label, clientId, clientSecret, refreshToken, baseUr
 
   async function call(method, path, body) {
     await ensureToken();
+    // CHAIN-2(b): same safeJoin guard as the bearer adapter.
+    const url = safeJoin(baseUrl, path);
     return request({
       method,
-      url: `${baseUrl}${path}`,
+      url,
       headers: { Authorization: `Bearer ${accessToken}` },
       body,
       retry: { retries: 2, backoffMs: 500, maxBackoffMs: 4000 },
     });
   }
 
-  return {
+  return defineAdapter({
     label,
     async get(path) {
       return call('GET', path);
     },
-    async [__INTERNAL_WRITE__](method, path, body) {
+    async write(method, path, body) {
       if (getMode() === 'read-only') {
         throw new SafetyError(
           `Refused: write blocked because MODE=read-only (adapter-level recheck, ${method} ${path}).`,
@@ -81,7 +106,7 @@ function createOauthClient({ label, clientId, clientSecret, refreshToken, baseUr
       }
       return call(method, path, body);
     },
-  };
+  });
 }
 
 function clientFromEnv() {
