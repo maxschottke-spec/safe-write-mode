@@ -157,7 +157,7 @@ For a single project, use `.claude/skills/safe-write-mode/SKILL.md` inside that 
 
 ## Status
 
-v0.2.2 — Reviewed adversarially by AI agents in three rounds (multi-agent review plus gitleaks, trivy and semgrep in round 2); reports and the list of fixes are in [`audits/`](audits/) and [`CHANGELOG.md`](CHANGELOG.md). No third-party human audit yet. Pattern-stable, API may evolve before v1.0.
+v0.2.2 — Reviewed adversarially by AI agents in three rounds (multi-agent review plus gitleaks, trivy and semgrep in round 2); the round-2 report is in [`audits/`](audits/), rounds 3 and later are summarised in [`CHANGELOG.md`](CHANGELOG.md), and round 1 is not published. No third-party human audit yet. Pattern-stable, API may evolve before v1.0.
 
 Built for one operator's e-commerce stack; tested in production against multiple third-party APIs (Shopify, Lexware, Google Ads/Analytics, Amazon SP-API, etc.). The integrations are not published here. Only the pattern is.
 
