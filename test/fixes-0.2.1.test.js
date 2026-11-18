@@ -121,6 +121,10 @@ test('audit log: query strings are not written to the log', async () => {
   assert.ok(log.includes('"path":"/customers"'));
   assert.ok(!log.includes('SECRETKEY123'));
   assert.ok(!log.includes('jane@example.com'));
+  const crypto = require('node:crypto');
+  const expected = 'sha256:' + crypto.createHash('sha256')
+    .update('/customers?email=jane@example.com&api_key=SECRETKEY123').digest('hex');
+  assert.ok(log.includes(`"targetHash":"${expected}"`), 'entry binds to the full target via its hash');
   assert.equal(pathForLog('/a/b#frag'), '/a/b');
 });
 

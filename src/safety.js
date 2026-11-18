@@ -213,6 +213,11 @@ async function safeWrite({ integration, method, path: target, body, opts = {}, e
     integration,
     method: normalizedMethod,
     path: pathForLog(target),
+    // The query string is not logged, but the entry must still bind to the
+    // exact request: targetHash covers the full target including the query.
+    targetHash: typeof target === 'string'
+      ? 'sha256:' + crypto.createHash('sha256').update(target).digest('hex')
+      : null,
     requestHash: hashRequest(body),
     dryRun,
     destructive,

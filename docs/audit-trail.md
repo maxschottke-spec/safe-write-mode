@@ -63,7 +63,7 @@ By design:
 - Response bodies
 - HTTP headers
 - Authorization tokens or credentials
-- Query strings (cut off before logging)
+- Query strings (cut off before logging; `targetHash` is a SHA-256 of the full target, so an entry still identifies the exact request)
 
 Path, `reason` and error messages are logged as given. Keep identifiers, personal data and secrets out of them.
 

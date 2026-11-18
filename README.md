@@ -44,7 +44,7 @@ await erp.write.delete('/stock/SKU-42', {
 });
 ```
 
-If `SAFE_WRITE_MODE` is not `read-write`, every write is refused before it leaves the process. Every attempt that reaches the gate — refused, dry-run, or executed — is logged to an NDJSON audit trail with a SHA-256 hash of the request body. Request bodies and query strings are never logged. Path, `reason` and error messages are logged as given, so keep identifiers and secrets out of them.
+If `SAFE_WRITE_MODE` is not `read-write`, every write is refused before it leaves the process. Every attempt that reaches the gate — refused, dry-run, or executed — is logged to an NDJSON audit trail with a SHA-256 hash of the request body. Request bodies and query strings are never logged, only their hashes. Path, `reason` and error messages are logged as given, so keep identifiers and secrets out of them.
 
 ## The three keys
 
