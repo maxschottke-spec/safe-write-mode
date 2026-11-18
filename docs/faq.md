@@ -52,7 +52,7 @@ Clients that were not built via `defineAdapter` are refused. The internal write 
 
 ## What about TypeScript?
 
-The library is JS-first, zero dependencies, no build. You can use it from TypeScript with `import * as swm from 'safe-write-mode'`. Types aren't bundled. If someone wants to publish `@types/safe-write-mode`, that's welcomed.
+The library is JS-first, zero dependencies, no build. Hand-written type definitions are in [`index.d.ts`](../index.d.ts) in the repository; they are not part of the v0.2.2 tag and ship with the next release. Use `import { createIntegration } from 'safe-write-mode'` or `import * as swm from 'safe-write-mode'`. The test suite checks that the declared names match the real exports, not every signature, so please report a type that is wrong.
 
 ## Can I use this without the integration factory?
 

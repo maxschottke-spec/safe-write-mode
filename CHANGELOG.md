@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+Not part of any tag yet. Installing `#v0.2.2` does not give you these changes.
+
+### Added
+
+- `index.d.ts`: hand-written type definitions for the public exports, with a test that
+  compares the declared names against the real exports.
+- `examples/agent-tool.js`: a command-line tool of the kind you hand to an AI agent
+  (read, refused write, dry-run, allowed write with read-back), run by the test suite.
+  `npm run example:agent`.
+- `.env.example`, issue forms, a pull request template.
+- Tests that run every example.
+
+### Changed
+
+- README rebuilt for first-time users: problem, solution and limits at the top, a quickstart
+  that shows a refused and an allowed write, how to read the audit log, limits before the
+  install section, a section on using the library with an AI agent, and a section that
+  separates what is tested automatically, what was checked in a real Claude Code session
+  and what no outside user has confirmed yet.
+- README no longer says "tested in production against" named third-party APIs. This
+  repository contains no evidence for that; the sentence now says so.
+- CI: `actions/checkout` and `actions/setup-node` moved from v4 to v7.
+
 ## 0.2.2 — 2026-11-18
 
 Found by walking through the repository as a first-time user, a few hours after 0.2.1.
