@@ -193,12 +193,17 @@ function _resetConfirmationVerifierForTests() {
 // identifiers, e-mail addresses or API keys. Only the path part is logged.
 // A bare hash of a low-entropy query (an e-mail address, a short id) can be
 // guessed by anyone who reads the log. targetHash is therefore an HMAC. The
-// key comes from SAFE_WRITE_AUDIT_KEY (captured once at load, never logged);
+// key comes from SAFE_WRITE_AUDIT_KEY (captured once at load, then removed
+// from the environment, never logged);
 // without it a random per-process key is used, which still lets entries of
 // one run be matched against each other but not across runs.
 const AUDIT_KEY = process.env.SAFE_WRITE_AUDIT_KEY
   ? Buffer.from(process.env.SAFE_WRITE_AUDIT_KEY, 'utf8')
   : crypto.randomBytes(32);
+// Remove the key from the environment once captured, so later in-process
+// code and child processes cannot read it. targetMac is deliberately not
+// exported: an exported MAC function would be an oracle for guessing targets.
+delete process.env.SAFE_WRITE_AUDIT_KEY;
 function targetMac(target) {
   return 'hmac-sha256:' + crypto.createHmac('sha256', AUDIT_KEY).update(target).digest('hex');
 }
@@ -357,7 +362,6 @@ module.exports = {
   canonicalStringify,
   isDestructivePath,
   pathForLog,
-  targetMac,
   _unlockModeForTests,
   _resetConfirmationVerifierForTests,
 };

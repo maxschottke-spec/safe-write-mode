@@ -12,6 +12,8 @@ const os = require('node:os');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'swm-021-'));
 process.env.WRITE_LOG_DIR = TMP;
 process.env.LOG_LEVEL = 'error';
+const AUDIT_KEY = 'test-audit-key';
+process.env.SAFE_WRITE_AUDIT_KEY = AUDIT_KEY;
 
 const { createIntegration, defineAdapter, lockMode, setConfirmationVerifier } = require('../src');
 const { _unlockModeForTests, _resetConfirmationVerifierForTests, pathForLog } = require('../src/safety');
@@ -122,12 +124,14 @@ test('audit log: query strings are not written to the log', async () => {
   assert.ok(!log.includes('SECRETKEY123'));
   assert.ok(!log.includes('jane@example.com'));
   const full = '/customers?email=jane@example.com&api_key=SECRETKEY123';
-  const { targetMac } = require('../src/safety');
-  assert.ok(log.includes(`"targetHash":"${targetMac(full)}"`), 'entry binds to the full target via a keyed MAC');
   const crypto = require('node:crypto');
+  const mac = (s) => 'hmac-sha256:' + crypto.createHmac('sha256', AUDIT_KEY).update(s).digest('hex');
+  assert.ok(log.includes(`"targetHash":"${mac(full)}"`), 'entry binds to the full target via a keyed MAC');
+  assert.equal(process.env.SAFE_WRITE_AUDIT_KEY, undefined, 'key is removed from the environment after load');
+  assert.equal(require('../src/safety').targetMac, undefined, 'the MAC function is not exported');
   const bare = crypto.createHash('sha256').update(full).digest('hex');
   assert.ok(!log.includes(bare), 'no unkeyed hash of the target that could be guessed offline');
-  assert.notEqual(targetMac(full), targetMac('/customers?email=john@example.com'));
+  assert.notEqual(mac(full), mac('/customers?email=john@example.com'));
   assert.equal(pathForLog('/a/b#frag'), '/a/b');
 });
 
