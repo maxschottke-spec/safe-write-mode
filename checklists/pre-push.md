@@ -4,7 +4,7 @@ Run this before pushing any code that uses `safeWrite()` to a shared branch.
 
 ## 1. Mode discipline
 
-- [ ] No `MODE=read-write` hardcoded anywhere in source. Only in deliberate `.env` files or session-level shell invocations.
+- [ ] No `SAFE_WRITE_MODE=read-write` hardcoded anywhere in source. Only in deliberate `.env` files or session-level shell invocations.
 - [ ] No `confirmed: true` hardcoded at the client wrapper level. It must come from the call site.
 - [ ] No `destructive: true` defaulted to `true` anywhere.
 
@@ -25,7 +25,7 @@ Run this before pushing any code that uses `safeWrite()` to a shared branch.
 ## 4. Dry-run readiness
 
 - [ ] Every new write can be exercised with `dryRun: true` and produces a meaningful audit entry.
-- [ ] An operator could safely run the script with `MODE=read-write` and `dryRun: true` to rehearse without consequences.
+- [ ] An operator could safely run the script with `SAFE_WRITE_MODE=read-write` and `dryRun: true` to rehearse without consequences.
 
 ## 5. Code review
 
@@ -46,7 +46,7 @@ Run this before pushing any code that uses `safeWrite()` to a shared branch.
 
 ## 8. Deployment
 
-- [ ] Deployment target has `MODE=read-only` by default unless this branch is the explicit write path.
+- [ ] Deployment target has `SAFE_WRITE_MODE=read-only` by default unless this branch is the explicit write path.
 - [ ] Monitoring/alerting is configured for `SafetyError` events.
 - [ ] Audit log volume is monitored.
 

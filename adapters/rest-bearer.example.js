@@ -59,7 +59,7 @@ function createRestBearerClient({ label, token, baseUrl = BASE_URL }) {
     async write(method, path, body) {
       if (getMode() === 'read-only') {
         throw new SafetyError(
-          `Refused: write blocked because MODE=read-only (adapter-level recheck, ${method} ${path}).`,
+          `Refused: write blocked because SAFE_WRITE_MODE=read-only (adapter-level recheck, ${method} ${path}).`,
           'READ_ONLY_MODE',
         );
       }

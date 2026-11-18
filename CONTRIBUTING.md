@@ -29,7 +29,7 @@
 
 ## Code style
 
-- No build step. CommonJS. Node ≥ 18.
+- No build step. CommonJS. Node ≥ 22.
 - No runtime dependencies. Test-only and dev deps are fine if necessary.
 - Comments only when the *why* is non-obvious. Code should be readable on its own.
 - Errors thrown should be typed (`SafetyError`, `HttpError`) or extend a typed error.

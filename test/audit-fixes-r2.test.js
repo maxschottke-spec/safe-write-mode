@@ -1,8 +1,7 @@
 'use strict';
 
-// Regression coverage for external audit ROUND 2 (post-fix-verification
-// 2026-05-20). See ~/Downloads/safe-write-mode-audit-2026-05-20.md and the
-// matching memory record audit_swm_v01_external (status: r2).
+// Regression coverage for review ROUND 2 (post-fix verification
+// 2026-05-20). See audits/2026-05-20-round-2.md.
 //
 // Each test pins a v0.2 behavior so an accidental rollback breaks CI.
 
@@ -21,7 +20,7 @@ const {
   createIntegration, defineAdapter, lockMode, setConfirmationVerifier,
   SafetyError, safeJoin, sanitizeUrlForLog, HttpError, logger,
 } = swm;
-const { _unlockModeForTests } = require('../src/safety');
+const { _unlockModeForTests, _resetConfirmationVerifierForTests } = require('../src/safety');
 const { isPrivateIPv4, isPrivateIPv6, assertPublicURL } = require('../src/http');
 const { classifyDocument } = require('../adapters/graphql.example');
 
@@ -258,7 +257,7 @@ test('CHAIN-1(a): verifier returning false refuses writes', async () => {
       { name: 'SafetyError', code: 'CONFIRMATION_REJECTED' },
     );
   } finally {
-    setConfirmationVerifier(null);
+    _resetConfirmationVerifierForTests();
   }
 });
 
@@ -281,7 +280,7 @@ test('CHAIN-1(a): verifier returning true allows the write', async () => {
     assert.equal(res.status, 200);
     assert.equal(called, true);
   } finally {
-    setConfirmationVerifier(null);
+    _resetConfirmationVerifierForTests();
   }
 });
 

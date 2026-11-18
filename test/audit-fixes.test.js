@@ -1,7 +1,7 @@
 'use strict';
 
-// Regression coverage for external audit findings (round 1) — see
-// audit_swm_v01_external. Round-2 fixes live in audit-fixes-r2.test.js.
+// Regression coverage for the round-1 review findings.
+// Round-2 fixes live in audit-fixes-r2.test.js.
 
 const test = require('node:test');
 const assert = require('node:assert/strict');

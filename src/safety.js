@@ -22,7 +22,23 @@ class SafetyError extends Error {
 //   process.env.SAFE_WRITE_MODE = 'read-only';
 //   lockMode();   // any subsequent env mutation is ignored.
 //
-// After lockMode() the value is final for the lifetime of the process.
+// After lockMode() the value is final for the lifetime of the process:
+// a second lockMode() call may repeat the locked value, but any attempt to
+// lock a different mode throws MODE_LOCKED (v0.2.1).
+// Test hooks (_unlockModeForTests, _resetConfirmationVerifierForTests) only
+// work if SAFE_WRITE_TEST_HOOKS=1 was set when this module was first loaded.
+// The value is captured once, so code running later in the same process
+// cannot switch the hooks on and use them to undo a lock.
+const TEST_HOOKS_ENABLED = process.env.SAFE_WRITE_TEST_HOOKS === '1';
+function assertTestHooks(name) {
+  if (!TEST_HOOKS_ENABLED) {
+    throw new SafetyError(
+      `Refused: ${name} is a test hook and only available when SAFE_WRITE_TEST_HOOKS=1 is set before the library is loaded.`,
+      'TEST_HOOKS_DISABLED',
+    );
+  }
+}
+
 let _lockedMode = null;
 let _legacyModeWarned = false;
 
@@ -56,15 +72,24 @@ function getMode() {
 function lockMode(explicit) {
   // Accept an explicit mode argument so the host can pin the value without a
   // round-trip through process.env (useful in tests and embedded hosts).
+  let requested = null;
   if (explicit != null) {
-    const m = String(explicit).toLowerCase();
-    if (m !== 'read-only' && m !== 'read-write') {
+    requested = String(explicit).toLowerCase();
+    if (requested !== 'read-only' && requested !== 'read-write') {
       throw new SafetyError(`Invalid lockMode('${explicit}'). Use 'read-only' or 'read-write'.`, 'INVALID_MODE');
     }
-    _lockedMode = m;
-  } else {
-    _lockedMode = readModeFromEnv();
   }
+  if (_lockedMode != null) {
+    // Already locked. Never re-read the environment and never switch modes.
+    if (requested != null && requested !== _lockedMode) {
+      throw new SafetyError(
+        `Refused: mode is already locked to '${_lockedMode}' and cannot be changed to '${requested}'.`,
+        'MODE_LOCKED',
+      );
+    }
+    return _lockedMode;
+  }
+  _lockedMode = requested != null ? requested : readModeFromEnv();
   logger.info('safe-write-mode', { event: 'mode-locked', mode: _lockedMode });
   return _lockedMode;
 }
@@ -76,6 +101,7 @@ function isModeLocked() {
 // Test-only: undo the lock. Not exported through src/index.js — tests reach
 // into ../src/safety directly.
 function _unlockModeForTests() {
+  assertTestHooks('_unlockModeForTests');
   _lockedMode = null;
   _legacyModeWarned = false;
 }
@@ -145,7 +171,30 @@ function setConfirmationVerifier(fn) {
   if (fn != null && typeof fn !== 'function') {
     throw new TypeError('setConfirmationVerifier expects a function or null.');
   }
+  // v0.2.1: once a verifier is installed it cannot be removed or replaced.
+  // Otherwise the code it is meant to constrain could simply call
+  // setConfirmationVerifier(null) and fall back to self-attestation.
+  if (_confirmationVerifier != null) {
+    throw new SafetyError(
+      'Refused: a confirmation verifier is already installed and cannot be replaced or removed.',
+      'VERIFIER_LOCKED',
+    );
+  }
   _confirmationVerifier = fn;
+}
+
+// Test-only: remove the verifier. Not exported through src/index.js.
+function _resetConfirmationVerifierForTests() {
+  assertTestHooks('_resetConfirmationVerifierForTests');
+  _confirmationVerifier = null;
+}
+
+// The audit log must not carry query strings: they routinely contain
+// identifiers, e-mail addresses or API keys. Only the path part is logged.
+function pathForLog(target) {
+  if (typeof target !== 'string') return '[non-string target]';
+  const q = target.search(/[?#]/);
+  return q === -1 ? target : target.slice(0, q);
 }
 
 async function safeWrite({ integration, method, path: target, body, opts = {}, execute }) {
@@ -163,13 +212,19 @@ async function safeWrite({ integration, method, path: target, body, opts = {}, e
   const baseEntry = {
     integration,
     method: normalizedMethod,
-    path: target,
+    path: pathForLog(target),
     requestHash: hashRequest(body),
     dryRun,
     destructive,
     reason,
   };
 
+  // v0.2.1: the target must be a string. Objects would bypass both the
+  // destructive-path check and the query-string cut for the audit log.
+  if (typeof target !== 'string') {
+    refuse(baseEntry, 'INVALID_PATH',
+      `Refused: path must be a string (got ${target === null ? 'null' : typeof target}).`);
+  }
   if (!ALLOWED_METHODS.has(normalizedMethod)) {
     refuse(baseEntry, 'INVALID_METHOD',
       `Refused: method must be one of POST/PUT/PATCH/DELETE (got '${method}').`);
@@ -178,15 +233,17 @@ async function safeWrite({ integration, method, path: target, body, opts = {}, e
     refuse(baseEntry, 'READ_ONLY_MODE',
       `Refused: write blocked because SAFE_WRITE_MODE=read-only (${integration} ${normalizedMethod} ${target}).`);
   }
-  if (!confirmed) {
+  // v0.2.1: strict booleans. Agents often pass arguments as strings, and
+  // 'false' or 1 must not count as consent.
+  if (confirmed !== true) {
     refuse(baseEntry, 'CONFIRMATION_REQUIRED',
       `Refused: write requires { confirmed: true } (${integration} ${normalizedMethod} ${target}).`);
   }
-  if (normalizedMethod === 'DELETE' && !destructive) {
+  if (normalizedMethod === 'DELETE' && destructive !== true) {
     refuse(baseEntry, 'DESTRUCTIVE_NOT_ACKED',
       `Refused: DELETE requires { destructive: true } (${integration} ${target}).`);
   }
-  if (isDestructivePath(target) && !destructive) {
+  if (isDestructivePath(target) && destructive !== true) {
     refuse(baseEntry, 'DESTRUCTIVE_NOT_ACKED',
       `Refused: path '${target}' looks destructive — set { destructive: true } to proceed (${integration} ${normalizedMethod}).`);
   }
@@ -284,5 +341,7 @@ module.exports = {
   setConfirmationVerifier,
   canonicalStringify,
   isDestructivePath,
+  pathForLog,
   _unlockModeForTests,
+  _resetConfirmationVerifierForTests,
 };

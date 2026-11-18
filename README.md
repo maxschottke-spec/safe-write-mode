@@ -12,9 +12,18 @@ It is a **pattern, not a product**. Built originally inside a multi-entity opera
 ```js
 const { createIntegration } = require('safe-write-mode');
 
+const { createIntegration, defineAdapter } = require('safe-write-mode');
+
+// Wrap your own HTTP client once. Hand-rolled clients are refused.
+const erpClient = defineAdapter({
+  label: 'erp',
+  get: (path, opts) => myHttp.get(path, opts),
+  write: (method, path, body, opts) => myHttp.request(method, path, body, opts),
+});
+
 const erp = createIntegration({
   name: 'erp',
-  client: myErpClient,
+  client: erpClient,
   // readOnly: true,   // → no .write property exists at all
 });
 
@@ -35,27 +44,27 @@ await erp.write.delete('/stock/SKU-42', {
 });
 ```
 
-If `SAFE_WRITE_MODE` is not `read-write`, every write is refused before it leaves the process. Every attempt — refused, dry-run, or executed — is logged to an NDJSON audit trail with a SHA-256 hash of the request body. Payload itself is never logged.
+If `SAFE_WRITE_MODE` is not `read-write`, every write is refused before it leaves the process. Every attempt that reaches the gate — refused, dry-run, or executed — is logged to an NDJSON audit trail with a SHA-256 hash of the request body. Request bodies and query strings are never logged. Path, `reason` and error messages are logged as given, so keep identifiers and secrets out of them.
 
 ## The three keys
 
 A write is only sent if **all three** are present:
 
 1. **`SAFE_WRITE_MODE=read-write`** in the environment (legacy `MODE=read-write` is honored with a deprecation warning). Default is `read-only`.
-2. **`{ confirmed: true }`** as a per-call option. Forces the caller to acknowledge that this specific operation is intentional.
+2. **`{ confirmed: true }`** as a per-call option. Forces the caller to acknowledge that this specific operation is intentional. Only the boolean `true` counts; `'true'`, `'false'` or `1` are refused.
 3. **`{ destructive: true }`** for `DELETE` (and any operation matching the destructive-path patterns, e.g. `/reset`, `/purge`, `/wipe`).
 
-Plus: **`{ dryRun: true }`** lets you rehearse the call without sending it. The audit-log records the rehearsal.
+Plus: **`{ dryRun: true }`** lets you rehearse the call without sending it. A rehearsal passes the same gate, so it also needs `SAFE_WRITE_MODE=read-write` and `{ confirmed: true }`. The audit-log records the rehearsal.
 
 > **Threat-model honesty.** The three keys protect against *accidental* writes from a process running with `read-only` defaults. They are **not** a security boundary against a hostile agent in the same Node process: any caller can set `confirmed: true` and `destructive: true` themselves. To get a real boundary, combine this library with read-only API tokens at your vendor and call `lockMode()` + `setConfirmationVerifier()` at startup. See [`SECURITY.md`](SECURITY.md) for the full threat model.
 
 ## Install
 
 ```bash
-npm install safe-write-mode
+npm install github:maxschottke-spec/safe-write-mode#v0.2.1
 ```
 
-Node ≥ 20.18 (active LTS, uses global `fetch` + `node:dns/promises`). Zero runtime dependencies.
+Not published to the npm registry; install from GitHub and pin a tag. Node ≥ 22 (uses global `fetch` + `node:dns/promises`). Zero runtime dependencies.
 
 ## Quick start
 
@@ -72,14 +81,21 @@ For the design rationale, read [`docs/philosophy.md`](docs/philosophy.md) and [`
 | `request()` | HTTP client with retry-after, backoff+jitter, redirect-auth guard, timeout |
 | `logger` | Append-only NDJSON audit + structured console log |
 | `env` | `required()` / `optional()` / `requiredJsonBase64()` helpers |
-| `SafetyError` | Typed error with `code` ∈ `READ_ONLY_MODE` / `CONFIRMATION_REQUIRED` / `DESTRUCTIVE_NOT_ACKED` / `INVALID_MODE` |
+| `SafetyError` | Typed error with `code`, e.g. `READ_ONLY_MODE` / `CONFIRMATION_REQUIRED` / `DESTRUCTIVE_NOT_ACKED` / `INVALID_MODE` / `MODE_LOCKED` / `VERIFIER_LOCKED` |
 
 ## What it deliberately doesn't do
 
 - **No vendor SDKs.** You bring your own HTTP client. See `adapters/` for skeletons.
 - **No magic.** Read-only integrations have **no `.write` property** — calling it isn't blocked, it's `undefined`. This is intentional.
-- **No "just this once" override.** If you need to bypass safety, change `MODE` deliberately.
-- **No payload logging.** Audit trail records hashes only. Stay clear of GDPR landmines.
+- **No "just this once" override.** If you need to bypass safety, change `SAFE_WRITE_MODE` deliberately.
+- **No payload logging.** The audit trail records a hash of the body, never the body or the query string.
+
+## Known limitations
+
+- **Self-attestation.** `confirmed` and `destructive` are set by the caller. Without `setConfirmationVerifier()` nothing distinguishes a human's yes from an agent's.
+- **Destructive paths are a heuristic.** The pattern list catches `/reset`, `/purge`, `/wipe` and similar. It does not catch `/truncate`, `/reset_all`, encoded paths or `?_method=DELETE`.
+- **DNS rebinding** is not covered by the SSRF guard.
+- **The audit log is not tamper-proof.** A process that can write the file can also edit it.
 
 ## Checklists
 
@@ -93,7 +109,7 @@ See [`SKILL.md`](SKILL.md). Drop it into your Claude Code skill directory or inv
 
 ## Status
 
-v0.2.0 — Two rounds of external security audit completed (round-1 + round-2 post-fix verification). Pattern-stable, API may evolve before v1.0.
+v0.2.1 — Reviewed adversarially by AI agents in three rounds (multi-agent review plus gitleaks, trivy and semgrep in round 2); reports and the list of fixes are in [`audits/`](audits/) and [`CHANGELOG.md`](CHANGELOG.md). No third-party human audit yet. Pattern-stable, API may evolve before v1.0.
 
 Built for one operator's e-commerce stack; tested in production against multiple third-party APIs (Shopify, Lexware, Google Ads/Analytics, Amazon SP-API, etc.). The integrations are not published here. Only the pattern is.
 

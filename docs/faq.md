@@ -28,33 +28,27 @@ No. It uses `node:fs`, `node:crypto`, and `node:path`. A browser-targeted varian
 
 If you're writing from a browser, you have bigger problems than safety wrappers.
 
-## I'm getting `SafetyError: Refused: write blocked because MODE=read-only`. Help.
+## I'm getting `SafetyError: Refused: write blocked because SAFE_WRITE_MODE=read-only`. Help.
 
 Working as intended. Either:
 
 1. The write is unintentional → don't fix it, the gate did its job
-2. The write is intentional → set `MODE=read-write` in the environment, deliberately, for this session only
+2. The write is intentional → set `SAFE_WRITE_MODE=read-write` in the environment, deliberately, for this session only
 
-Don't set `MODE=read-write` globally on your shell. Set it inline:
+Don't set `SAFE_WRITE_MODE=read-write` globally on your shell. Set it inline:
 
 ```bash
-MODE=read-write node my-script.js
+SAFE_WRITE_MODE=read-write node my-script.js
 ```
 
 ## How do I add a new integration?
 
-There's no "add an integration" step. `createIntegration` takes any object with a `client` that has the right shape. See `adapters/*.example.js` for skeletons.
+Build a client with `defineAdapter({ label, get, write })` and pass it to `createIntegration({ name, client })`. See `adapters/*.example.js` for skeletons.
 
-The factory expects the client to expose:
+- `get(path, opts)` handles reads
+- `write(method, path, body, opts)` handles writes. You never call it directly — `safeWrite` does, after the three keys have passed. Leave it out if the integration is read-only.
 
-- `client.get(path, opts)` for reads
-- `client[__INTERNAL_WRITE__](method, path, body, opts)` for writes (or no method at all if `readOnly: true`)
-
-The `__INTERNAL_WRITE__` symbol is exported. Your adapter implements that method; you never call it directly — `safeWrite` does, after passing the three keys.
-
-## Why a Symbol for the internal write method?
-
-To make it nearly impossible to accidentally call from outside. `client.post(...)` would be tempting and dangerous. `client[__INTERNAL_WRITE__](...)` requires you to import the symbol, which means you read the docs and understood what you're doing.
+Clients that were not built via `defineAdapter` are refused. The internal write hook is not exported, so nothing outside the library can call a write without going through the gate.
 
 ## What about TypeScript?
 

@@ -43,7 +43,7 @@ If the payload is large or contains many entities, split it into logical batches
 ### 3. Three keys
 Only call `safeWrite()` with:
 
-- `MODE=read-write` (set in environment, deliberately, by the user)
+- `SAFE_WRITE_MODE=read-write` (set in environment, deliberately, by the user)
 - `{ confirmed: true }` per call
 - `{ destructive: true }` if the operation is `DELETE` or otherwise irreversible
 
@@ -101,7 +101,7 @@ User: "Update the stock level for SKU-42 to 50 in our ERP."
 
 Agent (this skill firing):
   Step 1 — Mode check.
-    Current MODE=read-only. To write to ERP I need MODE=read-write set
+    Current SAFE_WRITE_MODE=read-only. To write to ERP I need SAFE_WRITE_MODE=read-write set
     deliberately. What's the reason for this update?
 
 User: "We received the delivery this morning, 50 new units."
@@ -126,7 +126,7 @@ Agent:
 
 ## Companion skills
 
-This skill assumes the codebase uses `safe-write-mode` (the npm package).
+This skill assumes the codebase uses `safe-write-mode` (installed from GitHub, see README).
 If it doesn't, recommend the user install it first, or apply the pattern
 manually following the three-key protocol above.
 

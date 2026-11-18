@@ -4,7 +4,7 @@ A write is only sent to a remote system if **all three** of these are true:
 
 | Key | Where set | Defends against |
 |---|---|---|
-| `MODE=read-write` | Environment variable | Misconfigured agents, runaway loops, mistaken environments |
+| `SAFE_WRITE_MODE=read-write` | Environment variable | Misconfigured agents, runaway loops, mistaken environments |
 | `{ confirmed: true }` | Per-call options | Forgotten flags, copy-pasted code, accidental batching |
 | `{ destructive: true }` | Per-call options (only for `DELETE` or operations you classify as irreversible) | Confusing a delete for an update, irreversible API calls |
 
@@ -12,13 +12,13 @@ Plus `{ dryRun: true }` lets you exercise the same code path without sending the
 
 ## Failure modes each key prevents
 
-### MODE=read-only (default)
+### SAFE_WRITE_MODE=read-only (default)
 
 Defends against: an agent or script running in a "wrong" environment. Examples:
 
-- A developer copies a production credential into their laptop's `.env`. Without `MODE=read-write`, nothing they run can write to prod.
-- An agent loop has a bug and tries to send 500 PATCH calls in 30 seconds. Without `MODE=read-write`, all 500 throw `SafetyError`.
-- A CI job inherits credentials. Without explicitly setting `MODE=read-write`, no writes leak out of CI.
+- A developer copies a production credential into their laptop's `.env`. Without `SAFE_WRITE_MODE=read-write`, nothing they run can write to prod.
+- An agent loop has a bug and tries to send 500 PATCH calls in 30 seconds. Without `SAFE_WRITE_MODE=read-write`, all 500 throw `SafetyError`.
+- A CI job inherits credentials. Without explicitly setting `SAFE_WRITE_MODE=read-write`, no writes leak out of CI.
 
 Default MUST be read-only. Switching is **deliberate per session**, not per code change.
 
@@ -55,7 +55,7 @@ Use dry-run as the first step of any new write. Show the user/operator the dry-r
 
 ```js
 // .env or shell — session-level
-MODE=read-write
+SAFE_WRITE_MODE=read-write
 
 // Code — call-level
 await integration.write.patch('/path', body, {

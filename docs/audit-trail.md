@@ -37,8 +37,9 @@ For `refused` entries, the `reasonCode` field tells you which gate fired:
 - `READ_ONLY_MODE`
 - `CONFIRMATION_REQUIRED`
 - `DESTRUCTIVE_NOT_ACKED` (DELETE without ack, or any method on a destructive-shaped path)
-- `INVALID_MODE`
+- `INVALID_MODE` is thrown before the first log entry and therefore never appears in the log; the same applies to `BODY_CYCLE` and `BODY_TOO_DEEP`
 - `INVALID_METHOD` (non POST/PUT/PATCH/DELETE)
+- `INVALID_PATH` (the target is not a string; the log shows `[non-string target]` instead of the value)
 - `REASON_REQUIRED` (when `opts.requireReason` or `SAFE_WRITE_REQUIRE_REASON=1`)
 - `AUDIT_UNAVAILABLE` (pre-execute fail-fast when log dir is not writable)
 
@@ -62,7 +63,9 @@ By design:
 - Response bodies
 - HTTP headers
 - Authorization tokens or credentials
-- PII of any kind (unless you put it in `reason`, which you shouldn't)
+- Query strings (cut off before logging)
+
+Path, `reason` and error messages are logged as given. Keep identifiers, personal data and secrets out of them.
 
 This makes the log safe to share with team members, store in version control (don't actually do that), or replicate to long-term storage. The hash lets you verify "yes, this request was made" without exposing what was in it.
 

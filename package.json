@@ -1,6 +1,6 @@
 {
   "name": "safe-write-mode",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Read-only by default. Three-key write protection. Auditable by design. Pattern for letting agents and scripts safely interact with live external systems.",
   "main": "src/index.js",
   "files": [
@@ -14,11 +14,11 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test 'test/*.test.js'",
-    "prepublishOnly": "node --test 'test/*.test.js'",
+    "test": "SAFE_WRITE_TEST_HOOKS=1 node --test 'test/*.test.js'",
+    "prepublishOnly": "SAFE_WRITE_TEST_HOOKS=1 node --test 'test/*.test.js'",
     "example:basic": "node examples/basic-read-only.js",
-    "example:write": "node examples/three-key-write.js",
-    "example:dry-run": "node examples/dry-run-flow.js",
+    "example:write": "SAFE_WRITE_MODE=read-write node examples/three-key-write.js",
+    "example:dry-run": "SAFE_WRITE_MODE=read-write node examples/dry-run-flow.js",
     "example:multi-tenant": "node examples/multi-tenant.js"
   },
   "keywords": [
@@ -37,7 +37,7 @@
   "author": "Max Schottke <max.schottke@gmail.com>",
   "license": "MIT",
   "engines": {
-    "node": ">=20.18"
+    "node": ">=22"
   },
   "repository": {
     "type": "git",
@@ -48,7 +48,7 @@
   },
   "homepage": "https://github.com/maxschottke-spec/safe-write-mode#readme",
   "publishConfig": {
-    "access": "restricted",
+    "access": "public",
     "provenance": true
   }
 }

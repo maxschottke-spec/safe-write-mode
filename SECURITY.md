@@ -4,7 +4,7 @@
 
 `safe-write-mode` is a **defensive** library. It does not:
 
-- Make network calls on its own (you provide the client; the bundled adapters are skeletons)
+- Make network calls from the core gate (you provide the client; the bundled adapters are skeletons). The optional `request()` helper does make them: `fetch` plus a DNS lookup
 - Store credentials (you provide them via env)
 - Process untrusted input (callers provide validated payloads)
 - Run code from configuration
@@ -23,13 +23,15 @@ If your threat model requires that this library cannot read the environment or w
 ### Protects against (v0.2)
 
 - Accidental writes from a process running with the default `read-only` mode
-- Caller-supplied payload typos hitting destructive endpoints (`{ destructive: true }` ack required for `DELETE` and for any path matching `/reset|/purge|/wipe|/clear|/flush|/destroy|/factory-reset/i`)
-- SSRF against link-local, loopback, RFC1918, RFC6598, IPv6 ULA, and cloud-metadata endpoints (e.g. `169.254.169.254`)
+- Caller-supplied payload typos hitting destructive endpoints (`{ destructive: true }` ack required for `DELETE` and for any path matching `/reset|/purge|/wipe|/clear|/flush|/destroy|/factory-reset/i`; the path match is a best-effort heuristic, not a complete list)
+- SSRF against link-local, loopback, RFC1918, RFC6598, IPv6 ULA, and cloud-metadata endpoints (e.g. `169.254.169.254`), including their IPv4-mapped and NAT64 IPv6 forms
 - Bearer-token leak via path-injection: example adapters refuse cross-origin paths, protocol-relative paths, scheme-prefixed paths, backslash paths
 - Secret leak through structured logs: keys named `authorization|cookie|set-cookie|password|secret|token|api[_-]?key|...` are redacted; values matching `Bearer …` / `sk-…` / `ghp_…` / `xox?-…` / `AKIA…` are masked
 - Secret leak through error messages: full URLs (query string + userinfo) are stripped before being interpolated into `HttpError` messages
 - Crafted client smuggling: `createIntegration` only accepts clients constructed via `defineAdapter`; the internal write symbol is not exported
-- Mode tampering: `lockMode()` captures the current mode in a frozen closure; later mutations to `process.env.SAFE_WRITE_MODE` are ignored
+- Mode tampering: `lockMode()` captures the current mode; later mutations to `process.env.SAFE_WRITE_MODE` are ignored, and a second `lockMode()` call with a different mode throws `MODE_LOCKED`
+- Verifier removal: once `setConfirmationVerifier()` has installed a verifier, it cannot be replaced or cleared (`VERIFIER_LOCKED`)
+- Loose consent flags: `confirmed` and `destructive` must be the boolean `true`; strings and numbers are refused
 - GraphQL mutation smuggling: classifier strips BOM/Unicode whitespace and string/comment content, refuses mixed-operation documents
 
 ### Does NOT protect against (by design — in-process trust boundary)
@@ -52,11 +54,11 @@ The NDJSON audit trail contains:
 
 - ISO timestamps
 - Integration names (strings you provide)
-- HTTP method + path (strings you provide)
+- HTTP method + path (strings you provide; the query string is cut off before logging)
 - SHA-256 hashes of bodies (no plaintext)
 - Boolean flags (dryRun, destructive)
 - Free-form `reason` strings (caller-provided)
-- Error messages from caught exceptions (URLs sanitized — see CHAIN-2(d) in audit_swm_v01_external)
+- Error messages from caught exceptions (URLs sanitized — see CHAIN-2(d) in `audits/2026-05-20-round-2.md`)
 
 It does **not** contain:
 
@@ -71,7 +73,7 @@ Treat audit logs as **operationally sensitive** — they reveal integration name
 If you find a security issue:
 
 1. **Do not** open a public GitHub issue.
-2. Use GitHub Private Vulnerability Reporting on https://github.com/maxschottke-spec/safe-write-mode/security/advisories/new — OR email `max.schottke@gmail.com` with subject `[safe-write-mode SECURITY]` and include a description, proof of concept if possible, and the version you tested against.
+2. Email `max.schottke@gmail.com` with subject `[safe-write-mode SECURITY]` and include a description, proof of concept if possible, and the version you tested against.
 3. Expect an acknowledgement within 5 business days.
 
 Coordinated disclosure preferred. Public credit for reporters who follow the process.
@@ -82,6 +84,7 @@ Coordinated disclosure preferred. Public credit for reporters who follow the pro
 - Misuse of the library outside its documented contract (e.g. catching `SafetyError` silently to bypass safety; setting `SAFE_WRITE_MODE=read-write` system-wide; never calling `lockMode()`)
 - DNS rebind against SSRF guard (acknowledged limitation — pin-IP agent on v0.3 roadmap)
 - Audit-log tamper after the fact (hash-chain on v0.3 roadmap)
+- Hostile code in the same Node process that reloads the module or edits the `require` cache. The test hooks in `src/safety.js` are disabled unless `SAFE_WRITE_TEST_HOOKS=1` was set before the library was loaded, but in-process code that controls module loading is outside what a library can defend against
 
 ## Known limitations
 
@@ -92,4 +95,4 @@ Coordinated disclosure preferred. Public credit for reporters who follow the pro
 
 ## Audit trail
 
-`safe-write-mode` is independently audited. See [`audit_swm_v01_external`](../memory/audit_swm_v01_external.md) (internal Max-Schottke memory) for the full history; round-2 fixes (2026-05-20) are documented in `test/audit-fixes-r2.test.js` as executable regression coverage.
+`safe-write-mode` has been reviewed adversarially by AI agents, not by a third-party human auditor. See [`audits/`](audits/) for the history. Round-2 fixes (2026-05-20) have regression coverage in `test/audit-fixes-r2.test.js`, round-3 fixes (2026-11-18) in `test/fixes-0.2.1.test.js`.

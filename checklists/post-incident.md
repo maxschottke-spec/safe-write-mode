@@ -4,7 +4,7 @@ When a `SafetyError` fires unexpectedly in production — or worse, when a write
 
 ## Immediate triage (first 30 min)
 
-- [ ] Stop the writes. Set `MODE=read-only` everywhere or kill the process.
+- [ ] Stop the writes. Set `SAFE_WRITE_MODE=read-only` everywhere or kill the process.
 - [ ] Identify the affected integration(s) and entity range.
 - [ ] Pull the relevant audit log entries: `grep <integration> logs/writes-YYYY-MM-DD.ndjson | jq`.
 - [ ] Count: how many writes attempted, refused, executed, errored?
@@ -14,7 +14,7 @@ When a `SafetyError` fires unexpectedly in production — or worse, when a write
 
 - [ ] For each suspect entry, confirm: integration, method, path, requestHash, reason, outcome.
 - [ ] Cross-reference with the source code: where was this `safeWrite` called from?
-- [ ] Cross-reference with deployment state: was `MODE=read-write` set deliberately?
+- [ ] Cross-reference with deployment state: was `SAFE_WRITE_MODE=read-write` set deliberately?
 - [ ] Cross-reference with operator activity: who/what triggered this?
 
 ## Root cause
@@ -23,7 +23,7 @@ Answer the questions:
 
 1. What was the trigger? (cron, user action, agent loop, retry storm)
 2. What sequence of checks fired? (which `reasonCode` if refused, or none if executed)
-3. Was the configuration correct? (`MODE`, env vars, deployed code)
+3. Was the configuration correct? (`SAFE_WRITE_MODE`, env vars, deployed code)
 4. Was the calling code correct? (right `confirmed` / `destructive` semantics)
 5. Was the guard library correct? (bug in `safeWrite` itself)
 

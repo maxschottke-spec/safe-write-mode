@@ -10,7 +10,7 @@ The fix isn't smarter agents. The fix is **a default that makes the wrong thing 
 
 `safe-write-mode` makes that default explicit:
 
-- `MODE=read-only` is the default. Reads work. Writes throw `SafetyError`.
+- `SAFE_WRITE_MODE=read-only` is the default. Reads work. Writes throw `SafetyError`.
 - Switching to `read-write` requires the operator to set an environment variable. It can't happen by accident.
 - Even with `read-write`, every individual write requires `{ confirmed: true }`. The agent can't fire-and-forget.
 - `DELETE` adds a third gate: `{ destructive: true }`. Anything irreversible should follow the same pattern.
@@ -53,11 +53,11 @@ This lets an agent (or operator) say "show me what would happen" without designi
 
 The three keys are not redundant:
 
-- **`MODE`** is *session-level* trust. "This process is allowed to write at all."
+- **`SAFE_WRITE_MODE`** is *session-level* trust. "This process is allowed to write at all."
 - **`confirmed`** is *call-level* trust. "This specific call is intentional."
 - **`destructive`** is *operation-level* trust. "I understand this cannot be undone."
 
-Each defends against a different failure mode. Removing any one weakens the system. A loop that calls `client.write.patch(..., { confirmed: true })` 10,000 times in `MODE=read-only` still does nothing. A misconfigured environment in `MODE=read-write` without `confirmed` still does nothing. A DELETE without `destructive` still does nothing.
+Each defends against a different failure mode. Removing any one weakens the system. A loop that calls `client.write.patch(..., { confirmed: true })` 10,000 times in `SAFE_WRITE_MODE=read-only` still does nothing. A misconfigured environment in `SAFE_WRITE_MODE=read-write` without `confirmed` still does nothing. A DELETE without `destructive` still does nothing.
 
 ## Why not just use TypeScript types?
 

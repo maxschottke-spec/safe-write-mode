@@ -18,8 +18,8 @@ You are reviewing a plan or PR. Your job is to catch the failure mode before it 
 - What happens if this plan only ships half-implemented?
 
 ### Mode discipline
-- Is `MODE=read-only` the deployment default? If not, why not?
-- Who decides when `MODE=read-write` is set? How?
+- Is `SAFE_WRITE_MODE=read-only` the deployment default? If not, why not?
+- Who decides when `SAFE_WRITE_MODE=read-write` is set? How?
 - Is there a session-level audit of when read-write was active?
 
 ### Confirmation
@@ -28,7 +28,7 @@ You are reviewing a plan or PR. Your job is to catch the failure mode before it 
 - Are there any loops that could fire `confirmed: true` thousands of times unexpectedly?
 
 ### Dry-run
-- Can a new operator run this plan with `MODE=read-write, dryRun: true` and see what *would* happen?
+- Can a new operator run this plan with `SAFE_WRITE_MODE=read-write, dryRun: true` and see what *would* happen?
 - Is the dry-run output reviewed before the live run?
 
 ### Audit
