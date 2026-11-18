@@ -1,8 +1,8 @@
 # Changelog
 
-## Unreleased
+## 0.2.3 — 2026-11-18
 
-Not part of any tag yet. Installing `#v0.2.2` does not give you these changes.
+Documentation and packaging for people who did not write this library. No change to the gate itself.
 
 ### Added
 

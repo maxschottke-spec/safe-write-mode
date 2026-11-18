@@ -29,7 +29,7 @@ await erp.write.delete('/stock/SKU-42', { confirmed: true, destructive: true });
 ```bash
 mkdir swm-try && cd swm-try
 npm init -y
-npm install github:maxschottke-spec/safe-write-mode#v0.2.2
+npm install github:maxschottke-spec/safe-write-mode#v0.2.3
 
 # 1. Default mode: the write is refused.
 node node_modules/safe-write-mode/examples/three-key-write.js
@@ -135,7 +135,7 @@ Field reference: [`docs/audit-trail.md`](docs/audit-trail.md).
 - **The audit log is not tamper-proof.** A process that can write the file can also edit it.
 - **DNS rebinding** is not covered by the SSRF guard of the optional `request()` helper, and `request()` cannot reach `localhost` or private addresses at all.
 - **No vendor SDKs, no payload logging, no "just this once" override.** You bring the HTTP client (skeletons in [`adapters/`](adapters/)). A read-only integration has no `.write` property at all.
-- **Young project.** Version 0.2.2, one maintainer, API may change before 1.0, no outside users have reported back yet. See [What has been verified](#what-has-been-verified).
+- **Young project.** Version 0.2.3, one maintainer, API may change before 1.0, no outside users have reported back yet. See [What has been verified](#what-has-been-verified).
 
 Full threat model: [`SECURITY.md`](SECURITY.md).
 
@@ -155,12 +155,12 @@ Full threat model: [`SECURITY.md`](SECURITY.md).
 ### As a library in your project
 
 ```bash
-npm install github:maxschottke-spec/safe-write-mode#v0.2.2
+npm install github:maxschottke-spec/safe-write-mode#v0.2.3
 ```
 
 The package is not on the npm registry. Install from GitHub and pin a tag, as above. Then wrap your client as in [`first.js`](#your-own-first-file); for real HTTP calls start from a skeleton in [`adapters/`](adapters/).
 
-TypeScript: hand-written type definitions ([`index.d.ts`](index.d.ts)) are in this repository. They are **not part of the v0.2.2 tag** and ship with the next release.
+TypeScript: hand-written type definitions ([`index.d.ts`](index.d.ts)) ship with the package since v0.2.3.
 
 ### As a skill for Claude Code
 
@@ -211,7 +211,7 @@ SAFE_WRITE_MODE=read-write node examples/agent-tool.js set SKU-42 50 --confirm -
 # {"written":true,"verified":true,"after":{"sku":"SKU-42","qty":50}}
 ```
 
-The stand-in "system" is a JSON file in your temp directory. `examples/agent-tool.js` is in the repository but **not in the v0.2.2 package**; until the next release, clone the repository or copy the file, and in your own project change `require('../src')` to `require('safe-write-mode')`.
+The stand-in "system" is a JSON file in your temp directory. `examples/agent-tool.js` ships with the package since v0.2.3; in your own project change `require('../src')` to `require('safe-write-mode')`.
 
 **Not covered, even with all of this:**
 
@@ -301,7 +301,7 @@ Also not verified here: Windows, real vendor APIs (this repository contains only
 
 ## Status
 
-v0.2.2. Reviewed adversarially by AI agents in three rounds (multi-agent review plus gitleaks, trivy and semgrep in round 2); the round-2 report is in [`audits/`](audits/), rounds 3 and later are summarised in [`CHANGELOG.md`](CHANGELOG.md), and round 1 is not published. No third-party human audit. The pattern is stable, the API may change before v1.0.
+v0.2.3. Reviewed adversarially by AI agents in three rounds (multi-agent review plus gitleaks, trivy and semgrep in round 2); the round-2 report is in [`audits/`](audits/), rounds 3 and later are summarised in [`CHANGELOG.md`](CHANGELOG.md), and round 1 is not published. No third-party human audit. The pattern is stable, the API may change before v1.0.
 
 Developed for and used in one operator's e-commerce stack. Those integrations are not published, so this repository contains no evidence of that use; what you can check here are the tests and the examples.
 

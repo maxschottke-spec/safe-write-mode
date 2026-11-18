@@ -1,6 +1,6 @@
 {
   "name": "safe-write-mode",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Read-only by default. Three-key write protection. Auditable by design. Pattern for letting agents and scripts safely interact with live external systems.",
   "main": "src/index.js",
   "types": "index.d.ts",
