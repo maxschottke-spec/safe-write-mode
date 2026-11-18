@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security problem
+    url: https://github.com/maxschottke-spec/safe-write-mode/security/policy
+    about: Please do not open a public issue. The security policy says how to report it privately.

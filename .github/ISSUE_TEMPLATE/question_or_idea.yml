@@ -1,0 +1,20 @@
+name: Question, idea or first-use report
+description: Ask how something works, suggest a change, or tell us how your first try went.
+labels: [question]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Reports from a first try are welcome, also when it did not work: where did you get stuck?
+        Before proposing a feature, see "What we don't accept" in CONTRIBUTING.md.
+  - type: textarea
+    id: what
+    attributes:
+      label: Your question, idea or report
+    validations:
+      required: true
+  - type: input
+    id: context
+    attributes:
+      label: How you use it (optional)
+      description: For example "Claude Code calling scripts against an ERP" or "cron job". No company names needed.
