@@ -217,8 +217,8 @@ export const logger: {
   debug(msg: string, meta?: Record<string, unknown>): void;
   /** Appends one entry to the NDJSON audit log. Throws if the log is not writable. */
   logWrite(entry: Record<string, unknown>): void;
-  /** Returns a copy with secret-looking keys and values masked. */
-  redact<T>(meta: T): T;
+  /** Returns a copy with secret-looking keys and values masked. The shape can change (for example Headers become a string). */
+  redact(meta: unknown): unknown;
 };
 
 export const env: {

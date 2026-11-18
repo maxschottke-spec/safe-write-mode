@@ -114,7 +114,7 @@ The audit log is `./logs/writes-YYYY-MM-DD.ndjson` (UTC date, one JSON object pe
  "reason":"manual restock after delivery","outcome":"refused","reasonCode":"READ_ONLY_MODE"}
 ```
 
-- `outcome` is `refused` (with `reasonCode`), `dry-run`, or the pair `pending` and then `ok` or `error`. `pending` is written before your client is called, so **every request that was handed to your client has a `pending` line**.
+- `outcome` is `refused` (with `reasonCode`), `dry-run`, or the pair `pending` and then `ok` or `error`. `pending` is written before your client is called, so **every write that was handed to your client has a `pending` line**. Reads are not logged.
 - To check that nothing went out in read-only mode, send one run into a log folder of its own and count the `pending` lines:
 
   ```bash
@@ -179,7 +179,7 @@ For all your projects use `~/.claude/skills/safe-write-mode/SKILL.md` instead. T
 git clone https://github.com/maxschottke-spec/safe-write-mode.git
 cd safe-write-mode
 npm test                  # no install step needed
-npm run example:basic     # also: example:write, example:dry-run, example:multi-tenant, example:agent
+npm run example:basic     # also: example:write, example:dry-run, example:multi-tenant, example:agent (a read)
 ```
 
 ## Using it with an AI agent

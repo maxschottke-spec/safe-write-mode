@@ -24,7 +24,7 @@
     "example:write": "SAFE_WRITE_MODE=read-write node examples/three-key-write.js",
     "example:dry-run": "SAFE_WRITE_MODE=read-write node examples/dry-run-flow.js",
     "example:multi-tenant": "node examples/multi-tenant.js",
-    "example:agent": "node examples/agent-tool.js"
+    "example:agent": "node examples/agent-tool.js get SKU-42"
   },
   "keywords": [
     "safety",
