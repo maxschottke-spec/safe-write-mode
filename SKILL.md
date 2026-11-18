@@ -36,7 +36,9 @@ Confirm with the user: "Current mode is read-only. To proceed with a write, I ne
 Refuse to continue if the answer is "just do it" or similarly unspecific.
 
 ### 2. Dry-run first
-Compute the exact payload that would be sent. Show it to the user verbatim. Ask: "This is the exact request that would go out. Proceed?"
+Compute the exact payload that would be sent. Show it to the user verbatim (method, path, body). Ask: "This is the exact request that would go out. Proceed?"
+
+While the mode is still read-only, do this by showing the planned request yourself. Do not call the library with `{ dryRun: true }` yet: a library dry-run passes the same gate as a real write and is refused with `READ_ONLY_MODE` until the user has set `SAFE_WRITE_MODE=read-write`. After the mode change you can rehearse with `{ confirmed: true, dryRun: true }` before the real call.
 
 If the payload is large or contains many entities, split it into logical batches. Do not send bulk writes without explicit per-batch approval.
 
@@ -56,10 +58,13 @@ Log to NDJSON before sending the request:
   "integration": "erp",
   "method": "PATCH",
   "path": "/stock/SKU-42",
+  "targetHash": "hmac-sha256:...",
   "requestHash": "sha256:...",
   "dryRun": false,
   "destructive": false,
-  "reason": "manual restock after delivery"
+  "reason": "manual restock after delivery",
+  "auditId": "0b6f1c1e-...",
+  "outcome": "pending"
 }
 ```
 

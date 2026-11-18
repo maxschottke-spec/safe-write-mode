@@ -24,6 +24,8 @@ Not part of any tag yet. Installing `#v0.2.2` does not give you these changes.
 - README no longer says "tested in production against" named third-party APIs. This
   repository contains no evidence for that; the sentence now says so.
 - CI: `actions/checkout` and `actions/setup-node` moved from v4 to v7.
+- `SKILL.md`: the dry-run step now says that a library dry-run needs `SAFE_WRITE_MODE=read-write`; while the mode is read-only the agent shows the planned request itself. In three real Claude Code runs the agent's first dry-run had been refused for this reason. The audit example shows `targetHash`, `auditId` and `outcome`.
+- Security contact is GitHub's private vulnerability reporting instead of an e-mail address.
 
 ## 0.2.2 — 2026-11-18
 

@@ -73,7 +73,7 @@ Treat audit logs as **operationally sensitive** — they reveal integration name
 If you find a security issue:
 
 1. **Do not** open a public GitHub issue.
-2. Email `max.schottke@gmail.com` with subject `[safe-write-mode SECURITY]` and include a description, proof of concept if possible, and the version you tested against.
+2. Report it privately through GitHub: open the repository's **Security** tab and choose **Report a vulnerability**. Include a description, a proof of concept if possible, and the version you tested against.
 3. Expect an acknowledgement within 5 business days.
 
 Coordinated disclosure preferred. Public credit for reporters who follow the process.

@@ -39,7 +39,7 @@
     "claude",
     "llm"
   ],
-  "author": "Max Schottke <max.schottke@gmail.com>",
+  "author": "Maximilian Schottke (https://github.com/maxschottke-spec)",
   "license": "MIT",
   "engines": {
     "node": ">=22"

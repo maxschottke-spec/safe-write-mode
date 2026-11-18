@@ -11,7 +11,7 @@ We use the [Contributor Covenant v2.1](https://www.contributor-covenant.org/vers
 
 ## Reporting
 
-Report violations privately to the maintainer (see repository metadata). All reports are reviewed.
+Report violations privately to the maintainer through the repository's **Security** tab (**Report a vulnerability** is a private channel) or, for anything that can be public, in an issue. All reports are reviewed.
 
 ## Scope
 
