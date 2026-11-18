@@ -10,7 +10,7 @@ Use both. Feature-flag the rollout. Three-key-protect every write.
 
 ## Can I disable the audit log?
 
-You can set `WRITE_LOG_DIR` to a path your process can't write to, and `logWrite` will throw on its first attempt. But there's no "off" switch and that's intentional. If you're writing, you should be auditing.
+No. There is no "off" switch, and that's intentional: if you're writing, you should be auditing. If the log directory is not writable, every write is refused with `AUDIT_UNAVAILABLE`.
 
 If you really need to disable logging for tests, mock the logger module.
 

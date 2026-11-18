@@ -186,3 +186,59 @@ test('test hooks: disabled unless SAFE_WRITE_TEST_HOOKS=1 was set at load time',
   const result = execFileSync(process.execPath, ['-e', script], { env, encoding: 'utf8' }).trim();
   assert.equal(result, 'TEST_HOOKS_DISABLED,TEST_HOOKS_DISABLED,TEST_HOOKS_DISABLED');
 });
+
+// ─── v0.2.2 ─────────────────────────────────────────────────────────────────
+
+test('0.2.2: refusal with an unwritable log directory is a typed AUDIT_UNAVAILABLE', async () => {
+  reset();
+  const file = path.join(TMP, 'not-a-directory');
+  fs.writeFileSync(file, 'x');
+  const before = process.env.WRITE_LOG_DIR;
+  process.env.WRITE_LOG_DIR = path.join(file, 'sub');
+  try {
+    const calls = [];
+    const api = integration(calls);
+    await assert.rejects(api.write.post('/x', {}, { confirmed: true }),
+      (err) => err.name === 'SafetyError' && err.code === 'AUDIT_UNAVAILABLE' && err.reasonCode === 'READ_ONLY_MODE' && Boolean(err.cause));
+    assert.equal(calls.length, 0);
+  } finally {
+    process.env.WRITE_LOG_DIR = before;
+  }
+});
+
+test('0.2.2: refusal messages do not contain the query string', async () => {
+  reset();
+  const api = integration([]);
+  await assert.rejects(
+    api.write.patch('/stock/SKU-42?token=abc&mail=a@b.de', {}, { confirmed: true }),
+    (err) => err.code === 'READ_ONLY_MODE' && !err.message.includes('token=abc') && err.message.includes('/stock/SKU-42'),
+  );
+});
+
+test('0.2.2: the README example runs as written', () => {
+  const { execFileSync } = require('node:child_process');
+  const readme = fs.readFileSync(path.join(__dirname, '..', 'README.md'), 'utf8');
+  const code = readme.split('```js\n// first.js\n')[1].split('\n```')[0]
+    .replace("require('safe-write-mode')", `require(${JSON.stringify(path.join(__dirname, '..', 'src'))})`);
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'swm-readme-'));
+  fs.writeFileSync(path.join(dir, 'first.js'), code);
+  const env = { ...process.env, SAFE_WRITE_MODE: 'read-write', WRITE_LOG_DIR: path.join(dir, 'logs'), LOG_LEVEL: 'error' };
+  delete env.SAFE_WRITE_TEST_HOOKS;
+  const out = execFileSync(process.execPath, ['first.js'], { cwd: dir, env, encoding: 'utf8' });
+  assert.match(out, /qty: 42/);
+  const log = fs.readdirSync(path.join(dir, 'logs')).map((f) => fs.readFileSync(path.join(dir, 'logs', f), 'utf8')).join('');
+  assert.equal(log.split('\n').filter((l) => l.includes('"outcome":"ok"')).length, 2);
+  // And without the mode it refuses with the documented code.
+  delete env.SAFE_WRITE_MODE;
+  assert.throws(() => execFileSync(process.execPath, ['first.js'], { cwd: dir, env, encoding: 'utf8', stdio: 'pipe' }),
+    (err) => String(err.stderr).includes('READ_ONLY_MODE'));
+});
+
+test('0.2.2: a throwing verifier does not leak its message into the SafetyError', async () => {
+  reset();
+  process.env.SAFE_WRITE_MODE = 'read-write';
+  setConfirmationVerifier(async ({ path: p }) => { throw new Error(`cannot approve ${p}`); });
+  const api = integration([]);
+  await assert.rejects(api.write.post('/x?secret=example', {}, { confirmed: true }),
+    (err) => err.code === 'CONFIRMATION_REJECTED' && !err.message.includes('secret=example'));
+});

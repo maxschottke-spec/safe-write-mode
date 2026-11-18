@@ -44,7 +44,7 @@ Use this flag for any operation that is hard or impossible to reverse: deleting 
 
 `dryRun: true` is **not** a fourth key — it's a parallel mode. When set:
 
-- All three keys are still checked (so dry-running a destructive write still requires `destructive: true`)
+- All three keys are still checked, including the mode: a dry-run needs `SAFE_WRITE_MODE=read-write` and `confirmed: true` (and dry-running a destructive write still requires `destructive: true`)
 - The `execute()` callback is **not** called
 - The audit log records the attempt with `outcome: 'dry-run'`
 - Returns `{ dryRun: true, integration, method, path }`

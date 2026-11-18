@@ -56,6 +56,13 @@ async function main() {
 }
 
 main().catch((err) => {
+  if (err && err.name === 'SafetyError') {
+    console.log('Refused by SafetyError:', err.code, '-', err.message);
+    if (err.code === 'READ_ONLY_MODE') {
+      console.log('  Hint: set SAFE_WRITE_MODE=read-write to allow writes (a dry-run needs it too).');
+    }
+    process.exit(1);
+  }
   console.error(err);
   process.exit(1);
 });

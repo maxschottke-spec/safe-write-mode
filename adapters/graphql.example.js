@@ -3,7 +3,7 @@
 // Adapter skeleton: GraphQL endpoint with mutation guard.
 // GraphQL doesn't distinguish reads/writes by HTTP verb — every call is POST.
 // We classify by document content. The v0.2 classifier replaces the v0.1
-// `^mutation\b` regex (which the external audit broke with BOM-prefix,
+// `^mutation\b` regex (which the round-2 review broke with BOM-prefix,
 // operationName-routing in a multi-op doc, and NBSP/Unicode whitespace).
 
 const { request, getMode, SafetyError, defineAdapter } = require('../src');

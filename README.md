@@ -10,41 +10,53 @@ It is a **pattern, not a product**. Built originally inside a multi-entity opera
 ## What it does
 
 ```js
-const { createIntegration } = require('safe-write-mode');
-
+// first.js
 const { createIntegration, defineAdapter } = require('safe-write-mode');
 
-// Wrap your own HTTP client once. Hand-rolled clients are refused.
+// Stand-in for your real HTTP client. get/write must return a promise;
+// if the result has a numeric `status`, it lands in the audit log.
+const myHttp = {
+  get: async (path) => ({ status: 200, body: { path, qty: 42 } }),
+  request: async (method, path, body) => ({ status: 200, body: { method, path, body } }),
+};
+
+// Wrap your client once. Hand-rolled clients are refused.
 const erpClient = defineAdapter({
   label: 'erp',
   get: (path, opts) => myHttp.get(path, opts),
   write: (method, path, body, opts) => myHttp.request(method, path, body, opts),
 });
 
-const erp = createIntegration({
-  name: 'erp',
-  client: erpClient,
-  // readOnly: true,   // → no .write property exists at all
-});
+async function main() {
+  const erp = createIntegration({
+    name: 'erp',
+    client: erpClient,
+    // readOnly: true,   // → no .write property exists at all
+  });
 
-// Reads always work.
-await erp.read.get('/stock/SKU-42');
+  // Reads always work.
+  console.log(await erp.read.get('/stock/SKU-42'));
 
-// Writes require three keys + explicit mode.
-await erp.write.patch('/stock/SKU-42', { qty: 50 }, {
-  confirmed: true,
-  reason: 'manual restock after delivery 2024-09-12',
-});
+  // Writes require three keys + explicit mode.
+  await erp.write.patch('/stock/SKU-42', { qty: 50 }, {
+    confirmed: true,
+    reason: 'manual restock after delivery',
+  });
 
-// DELETE additionally requires destructive: true.
-await erp.write.delete('/stock/SKU-42', {
-  confirmed: true,
-  destructive: true,
-  reason: 'SKU discontinued',
-});
+  // DELETE additionally requires destructive: true.
+  await erp.write.delete('/stock/SKU-42', {
+    confirmed: true,
+    destructive: true,
+    reason: 'SKU discontinued',
+  });
+}
+
+main().catch((err) => { console.error(err.code, err.message); process.exit(1); });
 ```
 
-If `SAFE_WRITE_MODE` is not `read-write`, every write is refused before it leaves the process. Every attempt that reaches the gate — refused, dry-run, or executed — is logged to an NDJSON audit trail with a SHA-256 hash of the request body. Request bodies and query strings are never logged, only their hashes. Path, `reason` and error messages are logged as given, so keep identifiers and secrets out of them.
+Run it with `SAFE_WRITE_MODE=read-write node first.js`. Without the variable the first write throws a `SafetyError` with code `READ_ONLY_MODE`. The audit log is written to `./logs/writes-YYYY-MM-DD.ndjson` (UTC date).
+
+If the mode is not `read-write` (set through `SAFE_WRITE_MODE`, the legacy `MODE`, or an explicit `lockMode()`), every write is refused before it leaves the process. Every attempt that reaches the gate — refused, dry-run, or executed — is logged to an NDJSON audit trail with a SHA-256 hash of the request body. Request bodies and query strings are never logged, only their hashes. The message of a thrown `SafetyError` does not contain the query string either. Path, `reason` and error messages are logged as given, so keep identifiers and secrets out of them.
 
 ## The three keys
 
@@ -61,7 +73,7 @@ Plus: **`{ dryRun: true }`** lets you rehearse the call without sending it. A re
 ## Install
 
 ```bash
-npm install github:maxschottke-spec/safe-write-mode#v0.2.1
+npm install github:maxschottke-spec/safe-write-mode#v0.2.2
 ```
 
 Not published to the npm registry; install from GitHub and pin a tag. Node ≥ 22 (uses global `fetch` + `node:dns/promises`). Zero runtime dependencies.
@@ -81,7 +93,36 @@ For the design rationale, read [`docs/philosophy.md`](docs/philosophy.md) and [`
 | `request()` | HTTP client with retry-after, backoff+jitter, redirect-auth guard, timeout |
 | `logger` | Append-only NDJSON audit + structured console log |
 | `env` | `required()` / `optional()` / `requiredJsonBase64()` helpers |
-| `SafetyError` | Typed error with `code`, e.g. `READ_ONLY_MODE` / `CONFIRMATION_REQUIRED` / `DESTRUCTIVE_NOT_ACKED` / `INVALID_MODE` / `MODE_LOCKED` / `VERIFIER_LOCKED` |
+| `SafetyError` | Typed error with `code`: `READ_ONLY_MODE`, `CONFIRMATION_REQUIRED`, `CONFIRMATION_REJECTED`, `DESTRUCTIVE_NOT_ACKED`, `REASON_REQUIRED`, `INVALID_MODE`, `INVALID_METHOD`, `INVALID_PATH`, `AUDIT_UNAVAILABLE`, `MODE_LOCKED`, `VERIFIER_LOCKED`, `BODY_CYCLE`, `BODY_TOO_DEEP`, `TEST_HOOKS_DISABLED` |
+
+## Locking the mode and adding a real confirmation
+
+```js
+const { lockMode, setConfirmationVerifier } = require('safe-write-mode');
+
+lockMode();   // freezes the current mode; later changes to the environment are ignored
+
+setConfirmationVerifier(async ({ integration, method, path, requestHash, destructive, reason, confirmationToken }) => {
+  return await askHostProcess(confirmationToken);   // must return exactly true
+});
+
+// per call: { confirmed: true, confirmationToken: '…' }
+```
+
+A refusal or an exception in the verifier ends in a `SafetyError` with code `CONFIRMATION_REJECTED`. Dry-runs pass the verifier too. Both calls are one-way: locking a different mode later throws `MODE_LOCKED` (repeating the locked mode is allowed), and installing a second verifier or removing the first throws `VERIFIER_LOCKED`. If the audit log is not writable, any refusal is reported as `AUDIT_UNAVAILABLE` with the original code in `err.reasonCode`.
+
+## Environment variables
+
+| Variable | Effect |
+|---|---|
+| `SAFE_WRITE_MODE` | `read-only` (default) or `read-write`. Legacy `MODE` is still read, with a warning. |
+| `WRITE_LOG_DIR` | Directory of the audit log, default `./logs`. If it is not writable, every write is refused. |
+| `SAFE_WRITE_REQUIRE_REASON` | `1` or `true` makes a non-empty `reason` mandatory for every write. |
+| `SAFE_WRITE_AUDIT_KEY` | Key for `targetHash` in the audit log. Read once at load, then removed from `process.env`. Without it a random key per process is used. |
+| `SAFE_WRITE_ALLOW_INSECURE` | `1` lets `request()` use `http:`. Loopback and private addresses stay blocked. |
+| `SAFE_WRITE_SKIP_DNS_CHECK` | `1` skips the DNS lookup of the SSRF guard in `request()`. |
+| `LOG_LEVEL` | `error`, `warn`, `info` (default) or `debug` for the console log. |
+| `SAFE_WRITE_TEST_HOOKS` | `1` enables the test hooks, and only if set before the library is first loaded. Only for this library's own test suite. |
 
 ## What it deliberately doesn't do
 
@@ -105,11 +146,18 @@ For the design rationale, read [`docs/philosophy.md`](docs/philosophy.md) and [`
 
 ## Use as a Claude Code skill
 
-See [`SKILL.md`](SKILL.md). Drop it into your Claude Code skill directory or invoke it as `/safe-write-mode`.
+See [`SKILL.md`](SKILL.md). Copy it into a skill folder, then invoke it as `/safe-write-mode`:
+
+```bash
+mkdir -p ~/.claude/skills/safe-write-mode
+cp node_modules/safe-write-mode/SKILL.md ~/.claude/skills/safe-write-mode/SKILL.md
+```
+
+For a single project, use `.claude/skills/safe-write-mode/SKILL.md` inside that project instead.
 
 ## Status
 
-v0.2.1 — Reviewed adversarially by AI agents in three rounds (multi-agent review plus gitleaks, trivy and semgrep in round 2); reports and the list of fixes are in [`audits/`](audits/) and [`CHANGELOG.md`](CHANGELOG.md). No third-party human audit yet. Pattern-stable, API may evolve before v1.0.
+v0.2.2 — Reviewed adversarially by AI agents in three rounds (multi-agent review plus gitleaks, trivy and semgrep in round 2); reports and the list of fixes are in [`audits/`](audits/) and [`CHANGELOG.md`](CHANGELOG.md). No third-party human audit yet. Pattern-stable, API may evolve before v1.0.
 
 Built for one operator's e-commerce stack; tested in production against multiple third-party APIs (Shopify, Lexware, Google Ads/Analytics, Amazon SP-API, etc.). The integrations are not published here. Only the pattern is.
 

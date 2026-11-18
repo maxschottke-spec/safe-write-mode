@@ -11,16 +11,16 @@
 
 It does:
 
-- Read `process.env.SAFE_WRITE_MODE` (and legacy `MODE`), `LOG_LEVEL`, `WRITE_LOG_DIR` from environment
+- Read `process.env.SAFE_WRITE_MODE` (and legacy `MODE`), `LOG_LEVEL`, `WRITE_LOG_DIR` and the other variables listed in the README from the environment. `SAFE_WRITE_AUDIT_KEY` is read once and then deleted from `process.env`
 - Compute SHA-256 hashes of request bodies
 - Append to log files in `WRITE_LOG_DIR` (default: `./logs/`)
 - Write to `process.stderr`
 
 If your threat model requires that this library cannot read the environment or write to disk, **don't use it as-is**. Vendor it, or wrap it.
 
-## What v0.2 protects against — and what it does not
+## What it protects against — and what it does not
 
-### Protects against (v0.2)
+### Protects against
 
 - Accidental writes from a process running with the default `read-only` mode
 - Caller-supplied payload typos hitting destructive endpoints (`{ destructive: true }` ack required for `DELETE` and for any path matching `/reset|/purge|/wipe|/clear|/flush|/destroy|/factory-reset/i`; the path match is a best-effort heuristic, not a complete list)
@@ -91,7 +91,7 @@ Coordinated disclosure preferred. Public credit for reporters who follow the pro
 - `getMode()` reads `process.env.SAFE_WRITE_MODE` at call time unless `lockMode()` has been called. Hosts that need a real freeze must call `lockMode()` during startup before any agent code runs.
 - Audit log writes are synchronous (`writeSync`). High-throughput callers may want to buffer.
 - HTTP layer follows `redirect: 'manual'` and refuses 3xx. If your target intentionally redirects, you must handle it before calling `request()`.
-- SSRF guard refuses `http://` unless `SAFE_WRITE_ALLOW_INSECURE=1` is set. The opt-in is intended for local development against a vendor sandbox on `localhost`; the IP-range check still runs.
+- SSRF guard refuses `http://` unless `SAFE_WRITE_ALLOW_INSECURE=1` is set. The opt-in permits `http:` only. Loopback and private addresses stay blocked, so `request()` cannot reach `localhost` or `127.0.0.1`; test against a mock with your own client or stub `get`/`write`.
 
 ## Audit trail
 

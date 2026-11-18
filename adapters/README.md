@@ -19,7 +19,7 @@ write symbol is no longer exported, so hand-rolled clients are refused by
 `createIntegration`.
 
 ```js
-const { defineAdapter } = require('safe-write-mode');
+const { defineAdapter, request } = require('safe-write-mode');
 const { safeJoin } = require('safe-write-mode').http;
 
 const client = defineAdapter({
@@ -41,7 +41,7 @@ The integration factory wires `.read.get → client.get` and (if not read-only)
 absolute-URL injection (`/https://evil.tld/x`), protocol-relative paths
 (`//evil.tld/x`), backslashes, scheme-like prefixes, CR/LF (header injection),
 and cross-origin escapes. The strict path validation is what closes the
-"Bearer-leak via path injection" CHAIN-2(b) vector from the external audit.
+"Bearer-leak via path injection" CHAIN-2(b) vector from the round-2 review.
 
 ## What we deliberately don't ship
 

@@ -47,11 +47,11 @@ function readModeFromEnv() {
   if (raw == null || raw === '') {
     if (process.env.MODE != null && process.env.MODE !== '') {
       if (!_legacyModeWarned) {
-        logger.warn(
-          'safe-write-mode',
-          'Using legacy env var MODE — please switch to SAFE_WRITE_MODE. ' +
+        logger.warn('safe-write-mode', {
+          event: 'legacy-mode-var',
+          hint: 'Using legacy env var MODE. Please switch to SAFE_WRITE_MODE; ' +
             'MODE will be ignored in a future major version.',
-        );
+        });
         _legacyModeWarned = true;
       }
       raw = process.env.MODE;
@@ -140,7 +140,19 @@ function hashRequest(body) {
 }
 
 function refuse(baseEntry, code, message) {
-  logger.logWrite({ ...baseEntry, outcome: 'refused', reasonCode: code });
+  try {
+    logger.logWrite({ ...baseEntry, outcome: 'refused', reasonCode: code });
+  } catch (logErr) {
+    // The write is refused either way. Report the audit problem as a typed
+    // error instead of leaking a raw fs error to the caller.
+    const err = new SafetyError(
+      `${message} In addition the audit log is unavailable (${logErr.code || logErr.name}).`,
+      'AUDIT_UNAVAILABLE',
+    );
+    err.reasonCode = code;   // the refusal that would have been reported
+    err.cause = logErr;
+    throw err;
+  }
   logger.warn('write[refused]', { ...baseEntry, reasonCode: code });
   throw new SafetyError(message, code);
 }
@@ -251,21 +263,21 @@ async function safeWrite({ integration, method, path: target, body, opts = {}, e
   }
   if (mode === 'read-only') {
     refuse(baseEntry, 'READ_ONLY_MODE',
-      `Refused: write blocked because SAFE_WRITE_MODE=read-only (${integration} ${normalizedMethod} ${target}).`);
+      `Refused: write blocked because SAFE_WRITE_MODE=read-only (${integration} ${normalizedMethod} ${pathForLog(target)}).`);
   }
   // v0.2.1: strict booleans. Agents often pass arguments as strings, and
   // 'false' or 1 must not count as consent.
   if (confirmed !== true) {
     refuse(baseEntry, 'CONFIRMATION_REQUIRED',
-      `Refused: write requires { confirmed: true } (${integration} ${normalizedMethod} ${target}).`);
+      `Refused: write requires { confirmed: true } (${integration} ${normalizedMethod} ${pathForLog(target)}).`);
   }
   if (normalizedMethod === 'DELETE' && destructive !== true) {
     refuse(baseEntry, 'DESTRUCTIVE_NOT_ACKED',
-      `Refused: DELETE requires { destructive: true } (${integration} ${target}).`);
+      `Refused: DELETE requires { destructive: true } (${integration} ${pathForLog(target)}).`);
   }
   if (isDestructivePath(target) && destructive !== true) {
     refuse(baseEntry, 'DESTRUCTIVE_NOT_ACKED',
-      `Refused: path '${target}' looks destructive — set { destructive: true } to proceed (${integration} ${normalizedMethod}).`);
+      `Refused: path '${pathForLog(target)}' looks destructive — set { destructive: true } to proceed (${integration} ${normalizedMethod}).`);
   }
   // CHAIN-1(a): if a host-supplied confirmation verifier is installed, route
   // every write through it. The verifier returns true to allow, false/throw to
@@ -285,7 +297,8 @@ async function safeWrite({ integration, method, path: target, body, opts = {}, e
       });
     } catch (verifierErr) {
       refuse(baseEntry, 'CONFIRMATION_REJECTED',
-        `Refused: confirmation verifier threw — ${verifierErr.message}`);
+        // The verifier's own message is not embedded: it may contain the full target.
+        `Refused: confirmation verifier threw (${verifierErr && verifierErr.name ? verifierErr.name : 'error'}).`);
     }
     if (verifierOk !== true) {
       refuse(baseEntry, 'CONFIRMATION_REJECTED',
@@ -301,7 +314,7 @@ async function safeWrite({ integration, method, path: target, body, opts = {}, e
     const r = typeof reason === 'string' ? reason.trim() : '';
     if (!r) {
       refuse(baseEntry, 'REASON_REQUIRED',
-        `Refused: write requires non-empty { reason } (${integration} ${normalizedMethod} ${target}).`);
+        `Refused: write requires non-empty { reason } (${integration} ${normalizedMethod} ${pathForLog(target)}).`);
     }
   }
 

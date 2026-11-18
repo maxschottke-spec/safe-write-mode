@@ -36,7 +36,7 @@
 
 ## Tests
 
-Tests live in `test/` and run with `node --test`. No test framework, no test runner config. If you can't write a test for it, reconsider whether it belongs in this library.
+Tests live in `test/` and run with `npm test`. Running `node --test` directly fails 27 tests with `TEST_HOOKS_DISABLED`, because the test hooks are off by default; use `SAFE_WRITE_TEST_HOOKS=1 node --test 'test/*.test.js'`. No test framework, no test runner config. If you can't write a test for it, reconsider whether it belongs in this library.
 
 ## Releases
 

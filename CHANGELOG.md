@@ -1,5 +1,27 @@
 # Changelog
 
+## 0.2.2 — 2026-11-18
+
+Found by walking through the repository as a first-time user, a few hours after 0.2.1.
+
+### Fixed
+
+- The first README example did not run when copied: a duplicate declaration, top-level
+  `await` in a CommonJS file and an undefined client. It is now a complete, runnable file.
+- A refused write with an unwritable log directory threw a raw file-system error. It now
+  throws `SafetyError` with code `AUDIT_UNAVAILABLE`.
+- The warning for the legacy `MODE` variable was printed as a character-by-character object.
+- Refusal messages contained the query string of the target. They now show the path only.
+- `checklists/pre-push.md`: the command that checks for a committed `.env` could never match.
+- `docs/philosophy.md` claimed a hash chain that does not exist.
+
+### Changed
+
+- README: sections for `lockMode()` / `setConfirmationVerifier()`, all environment variables,
+  the full list of error codes, and how to install the skill.
+- The installed package now contains `examples/` and `CHANGELOG.md`.
+- The two examples that need `read-write` explain themselves instead of printing a stack trace.
+
 ## 0.2.1 — 2026-11-18
 
 A third adversarial review (by AI agents) found seven ways around the gate and

@@ -12,10 +12,12 @@ One JSON object per line. Each line has:
   "integration": "erp",
   "method": "PATCH",
   "path": "/stock/SKU-42",
+  "targetHash": "hmac-sha256:5b1c…",
   "requestHash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
   "dryRun": false,
   "destructive": false,
   "reason": "manual restock after delivery 2026-05-19",
+  "auditId": "0b6f1c1e-6d0a-4a0e-9a57-2f6f3b1d7c11",
   "outcome": "ok",
   "status": 200,
   "durationMs": 142
@@ -39,13 +41,14 @@ For `refused` entries, the `reasonCode` field tells you which gate fired:
 - `DESTRUCTIVE_NOT_ACKED` (DELETE without ack, or any method on a destructive-shaped path)
 - `INVALID_MODE` is thrown before the first log entry and therefore never appears in the log; the same applies to `BODY_CYCLE` and `BODY_TOO_DEEP`
 - `INVALID_METHOD` (non POST/PUT/PATCH/DELETE)
+- `CONFIRMATION_REJECTED` (a host verifier refused or threw)
 - `INVALID_PATH` (the target is not a string; the log shows `[non-string target]` instead of the value)
 - `REASON_REQUIRED` (when `opts.requireReason` or `SAFE_WRITE_REQUIRE_REASON=1`)
 - `AUDIT_UNAVAILABLE` (pre-execute fail-fast when log dir is not writable)
 
 ## Where it goes
 
-By default: `./logs/writes-YYYY-MM-DD.ndjson`. Files are date-named, not actively rotated — old files are not deleted by the library. Ship to long-term storage and prune manually, or wrap `logWrite` with retention logic.
+By default: `./logs/writes-YYYY-MM-DD.ndjson` (UTC date; `ts` is UTC too). Files are date-named, not actively rotated — old files are not deleted by the library. Ship to long-term storage and prune manually, or wrap `logWrite` with retention logic.
 
 Override with `WRITE_LOG_DIR`:
 
@@ -67,7 +70,7 @@ By design:
 
 Path, `reason` and error messages are logged as given. Keep identifiers, personal data and secrets out of them.
 
-This makes the log safe to share with team members, store in version control (don't actually do that), or replicate to long-term storage. The hash lets you verify "yes, this request was made" without exposing what was in it.
+The log is still operationally sensitive (paths, reasons, timing): share it deliberately, keep it out of version control, and replicate it to long-term storage if you need it later. The hash lets you verify "yes, this request was made" without exposing what was in it.
 
 ## Operational guidance
 

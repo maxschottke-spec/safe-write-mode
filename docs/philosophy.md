@@ -35,7 +35,7 @@ A naive audit log records the request body. This sounds responsible. It's a disa
 - Audit logs typically sit at lower trust than the originating system, but inherit its sensitivity
 - Storing payload-grade data multiplies your GDPR / SOC2 / breach-disclosure surface area
 
-So `safe-write-mode` logs the **SHA-256 hash** of the body. You can prove a specific request was made (by re-hashing). You can detect tampering (the hash chain breaks). You cannot reconstruct the data.
+So `safe-write-mode` logs the **SHA-256 hash** of the body. You can prove a specific request was made (by re-hashing). You cannot reconstruct the data. Tampering with the log itself is not detectable; see `audit-trail.md`.
 
 If you actually need the payload for debugging, you can wrap `safeWrite` to record it in a separate, properly-secured store. But the default audit trail is hash-only.
 

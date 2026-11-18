@@ -40,7 +40,7 @@ Run this before pushing any code that uses `safeWrite()` to a shared branch.
 
 ## 7. Secrets and config
 
-- [ ] `.env` is in `.gitignore`. Verify with `git ls-files | grep -E '^\\.env'`.
+- [ ] `.env` is in `.gitignore`. Verify with `git ls-files | grep -E '^\.env'`.
 - [ ] Any new env vars are documented in the README or an `.env.example`.
 - [ ] `gitleaks` and `trufflehog` pass with no findings on the diff.
 

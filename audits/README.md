@@ -12,7 +12,7 @@ Adversarial reviews of `safe-write-mode` by AI agents, kept under version contro
 
 1. Reviewer audits the current `main` HEAD adversarially. Standard SAST is part of the pass but not the whole pass — semantic threat-model analysis is where every CRITICAL has come from so far.
 2. Reviewer files the report under `audits/YYYY-MM-DD-round-N.md`.
-3. Maintainer reads, opens fix issues, lands fixes with regression coverage in `test/audit-fixes-rN.test.js`.
+3. Maintainer reads, opens fix issues, lands fixes with regression coverage in `test/` (`audit-fixes.test.js`, `audit-fixes-r2.test.js`, `fixes-0.2.1.test.js`).
 4. After the next major behavior change, the next round starts.
 
 ## Tool baseline used in round 2
