@@ -19,8 +19,10 @@ several places where the documentation contradicted the code.
   turns `[::ffff:127.0.0.1]` into `::ffff:7f00:1`. That form and the NAT64
   prefix `64:ff9b::/96` are now converted back to IPv4 and checked.
 - Query strings were written to the audit log together with the path. The log
-  now records the path without the query, plus `targetHash`, a SHA-256 of the
-  full target, so an entry still identifies the exact request.
+  now records the path without the query, plus `targetHash`, an HMAC-SHA-256 of
+  the full target (key from `SAFE_WRITE_AUDIT_KEY`, otherwise random per
+  process), so an entry still identifies the exact request without making the
+  query guessable.
 - A path that is not a string (for example an object with `pathname` and
   `search`) skipped both the destructive-path check and the query-string cut.
   Such targets are now refused with `INVALID_PATH`.

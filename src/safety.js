@@ -191,6 +191,18 @@ function _resetConfirmationVerifierForTests() {
 
 // The audit log must not carry query strings: they routinely contain
 // identifiers, e-mail addresses or API keys. Only the path part is logged.
+// A bare hash of a low-entropy query (an e-mail address, a short id) can be
+// guessed by anyone who reads the log. targetHash is therefore an HMAC. The
+// key comes from SAFE_WRITE_AUDIT_KEY (captured once at load, never logged);
+// without it a random per-process key is used, which still lets entries of
+// one run be matched against each other but not across runs.
+const AUDIT_KEY = process.env.SAFE_WRITE_AUDIT_KEY
+  ? Buffer.from(process.env.SAFE_WRITE_AUDIT_KEY, 'utf8')
+  : crypto.randomBytes(32);
+function targetMac(target) {
+  return 'hmac-sha256:' + crypto.createHmac('sha256', AUDIT_KEY).update(target).digest('hex');
+}
+
 function pathForLog(target) {
   if (typeof target !== 'string') return '[non-string target]';
   const q = target.search(/[?#]/);
@@ -214,10 +226,8 @@ async function safeWrite({ integration, method, path: target, body, opts = {}, e
     method: normalizedMethod,
     path: pathForLog(target),
     // The query string is not logged, but the entry must still bind to the
-    // exact request: targetHash covers the full target including the query.
-    targetHash: typeof target === 'string'
-      ? 'sha256:' + crypto.createHash('sha256').update(target).digest('hex')
-      : null,
+    // exact request: targetHash is a keyed MAC over the full target.
+    targetHash: typeof target === 'string' ? targetMac(target) : null,
     requestHash: hashRequest(body),
     dryRun,
     destructive,
@@ -347,6 +357,7 @@ module.exports = {
   canonicalStringify,
   isDestructivePath,
   pathForLog,
+  targetMac,
   _unlockModeForTests,
   _resetConfirmationVerifierForTests,
 };

@@ -63,7 +63,7 @@ By design:
 - Response bodies
 - HTTP headers
 - Authorization tokens or credentials
-- Query strings (cut off before logging; `targetHash` is a SHA-256 of the full target, so an entry still identifies the exact request)
+- Query strings (cut off before logging; `targetHash` is an HMAC-SHA-256 of the full target, so an entry still identifies the exact request. Set `SAFE_WRITE_AUDIT_KEY` to keep the key stable across runs; without it a random per-process key is used. `requestHash` is a plain SHA-256 of the body: do not rely on it to hide short or guessable bodies)
 
 Path, `reason` and error messages are logged as given. Keep identifiers, personal data and secrets out of them.
 
